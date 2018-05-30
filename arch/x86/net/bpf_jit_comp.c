@@ -750,6 +750,13 @@ static int do_jit(struct bpf_prog *bpf_prog, int *addrs, u8 *image,
 			}
 			break;
 
+			/* speculation barrier */
+		case BPF_ST | BPF_NOSPEC:
+			if (boot_cpu_has(X86_FEATURE_XMM2))
+				/* Emit 'lfence' */
+				EMIT3(0x0F, 0xAE, 0xE8);
+			break;
+
 			/* ST: *(u8*)(dst_reg + off) = imm */
 		case BPF_ST | BPF_MEM | BPF_B:
 			if (is_ereg(dst_reg))
@@ -1255,7 +1262,9 @@ out_image:
 		prog = orig_prog;
 	}
 
-	if (!prog->is_func || extra_pass) {
+	if (!image || !prog->is_func || extra_pass) {
+		if (image)
+			bpf_prog_fill_jited_linfo(prog, addrs);
 out_addrs:
 		kfree(addrs);
 		kfree(jit_data);

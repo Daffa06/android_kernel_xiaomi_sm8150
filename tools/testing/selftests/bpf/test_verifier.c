@@ -2158,6 +2158,19 @@ static struct bpf_test tests[] = {
 		.result = ACCEPT,
 	},
 	{
+		"alu32: mov u32 const",
+		.insns = {
+			BPF_MOV32_IMM(BPF_REG_7, 0),
+			BPF_ALU32_IMM(BPF_AND, BPF_REG_7, 1),
+			BPF_MOV32_REG(BPF_REG_0, BPF_REG_7),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 1),
+			BPF_LDX_MEM(BPF_DW, BPF_REG_0, BPF_REG_7, 0),
+			BPF_EXIT_INSN(),
+		},
+		.result = ACCEPT,
+		.retval = 0,
+	},
+	{
 		"unpriv: partial copy of pointer",
 		.insns = {
 			BPF_MOV32_REG(BPF_REG_1, BPF_REG_10),
@@ -2999,7 +3012,7 @@ static struct bpf_test tests[] = {
 			BPF_MOV64_IMM(BPF_REG_0, 0),
 			BPF_EXIT_INSN(),
 		},
-		.errstr = "R3 pointer arithmetic on PTR_TO_PACKET_END",
+		.errstr = "R3 pointer arithmetic on pkt_end",
 		.result = REJECT,
 		.prog_type = BPF_PROG_TYPE_SCHED_CLS,
 	},
@@ -4027,7 +4040,7 @@ static struct bpf_test tests[] = {
 			BPF_EXIT_INSN(),
 		},
 		.fixup_map1 = { 4 },
-		.errstr = "R4 pointer arithmetic on PTR_TO_MAP_VALUE_OR_NULL",
+		.errstr = "R4 pointer arithmetic on map_value_or_null",
 		.result = REJECT,
 		.prog_type = BPF_PROG_TYPE_SCHED_CLS
 	},
@@ -4048,7 +4061,7 @@ static struct bpf_test tests[] = {
 			BPF_EXIT_INSN(),
 		},
 		.fixup_map1 = { 4 },
-		.errstr = "R4 pointer arithmetic on PTR_TO_MAP_VALUE_OR_NULL",
+		.errstr = "R4 pointer arithmetic on map_value_or_null",
 		.result = REJECT,
 		.prog_type = BPF_PROG_TYPE_SCHED_CLS
 	},
@@ -4069,7 +4082,7 @@ static struct bpf_test tests[] = {
 			BPF_EXIT_INSN(),
 		},
 		.fixup_map1 = { 4 },
-		.errstr = "R4 pointer arithmetic on PTR_TO_MAP_VALUE_OR_NULL",
+		.errstr = "R4 pointer arithmetic on map_value_or_null",
 		.result = REJECT,
 		.prog_type = BPF_PROG_TYPE_SCHED_CLS
 	},
@@ -5946,7 +5959,7 @@ static struct bpf_test tests[] = {
 			BPF_EXIT_INSN(),
 		},
 		.fixup_map_in_map = { 3 },
-		.errstr = "R1 pointer arithmetic on CONST_PTR_TO_MAP prohibited",
+		.errstr = "R1 pointer arithmetic on map_ptr prohibited",
 		.result = REJECT,
 	},
 	{
@@ -7334,7 +7347,7 @@ static struct bpf_test tests[] = {
 			BPF_MOV64_IMM(BPF_REG_0, 0),
 			BPF_EXIT_INSN(),
 		},
-		.errstr = "R3 pointer arithmetic on PTR_TO_PACKET_END",
+		.errstr = "R3 pointer arithmetic on pkt_end",
 		.result = REJECT,
 		.prog_type = BPF_PROG_TYPE_XDP,
 	},
@@ -7353,7 +7366,7 @@ static struct bpf_test tests[] = {
 			BPF_MOV64_IMM(BPF_REG_0, 0),
 			BPF_EXIT_INSN(),
 		},
-		.errstr = "R3 pointer arithmetic on PTR_TO_PACKET_END",
+		.errstr = "R3 pointer arithmetic on pkt_end",
 		.result = REJECT,
 		.prog_type = BPF_PROG_TYPE_XDP,
 	},

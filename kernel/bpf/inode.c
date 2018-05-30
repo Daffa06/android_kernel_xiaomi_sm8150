@@ -196,20 +196,23 @@ static void *map_seq_next(struct seq_file *m, void *v, loff_t *pos)
 {
 	struct bpf_map *map = seq_file_to_map(m);
 	void *key = map_iter(m)->key;
+	void *prev_key;
 
+	(*pos)++;
 	if (map_iter(m)->done)
 		return NULL;
 
 	if (unlikely(v == SEQ_START_TOKEN))
-		goto done;
+		prev_key = NULL;
+	else
+		prev_key = key;
 
-	if (map->ops->map_get_next_key(map, key, key)) {
+	rcu_read_lock();
+	if (map->ops->map_get_next_key(map, prev_key, key)) {
 		map_iter(m)->done = true;
-		return NULL;
+		key = NULL;
 	}
-
-done:
-	++(*pos);
+	rcu_read_unlock();
 	return key;
 }
 
@@ -295,6 +298,15 @@ static const struct file_operations bpffs_map_fops = {
 	.release	= bpffs_map_release,
 };
 
+static int bpffs_obj_open(struct inode *inode, struct file *file)
+{
+	return -EIO;
+}
+
+static const struct file_operations bpffs_obj_fops = {
+	.open		= bpffs_obj_open,
+};
+
 static int bpf_mkobj_ops(struct dentry *dentry, umode_t mode, void *raw,
 			 const struct inode_operations *iops,
 			 const struct file_operations *fops)
@@ -314,7 +326,8 @@ static int bpf_mkobj_ops(struct dentry *dentry, umode_t mode, void *raw,
 
 static int bpf_mkprog(struct dentry *dentry, umode_t mode, void *arg)
 {
-	return bpf_mkobj_ops(dentry, mode, arg, &bpf_prog_iops, NULL);
+	return bpf_mkobj_ops(dentry, mode, arg, &bpf_prog_iops,
+			     &bpffs_obj_fops);
 }
 
 static int bpf_mkmap(struct dentry *dentry, umode_t mode, void *arg)
@@ -322,7 +335,8 @@ static int bpf_mkmap(struct dentry *dentry, umode_t mode, void *arg)
 	struct bpf_map *map = arg;
 
 	return bpf_mkobj_ops(dentry, mode, arg, &bpf_map_iops,
-			     map->btf ? &bpffs_map_fops : NULL);
+			     bpf_map_support_seq_show(map) ?
+			     &bpffs_map_fops : &bpffs_obj_fops);
 }
 
 static struct dentry *
@@ -553,9 +567,8 @@ static int bpf_show_options(struct seq_file *m, struct dentry *root)
 	return 0;
 }
 
-static void bpf_destroy_inode_deferred(struct rcu_head *head)
+static void bpf_free_inode(struct inode *inode)
 {
-	struct inode *inode = container_of(head, struct inode, i_rcu);
 	enum bpf_type type;
 
 	if (S_ISLNK(inode->i_mode))
@@ -565,16 +578,11 @@ static void bpf_destroy_inode_deferred(struct rcu_head *head)
 	free_inode_nonrcu(inode);
 }
 
-static void bpf_destroy_inode(struct inode *inode)
-{
-	call_rcu(&inode->i_rcu, bpf_destroy_inode_deferred);
-}
-
 static const struct super_operations bpf_super_ops = {
 	.statfs		= simple_statfs,
 	.drop_inode	= generic_delete_inode,
 	.show_options	= bpf_show_options,
-	.destroy_inode	= bpf_destroy_inode,
+	.free_inode	= bpf_free_inode,
 };
 
 enum {
