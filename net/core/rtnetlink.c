@@ -714,13 +714,15 @@ int rtnl_put_cacheinfo(struct sk_buff *skb, struct dst_entry *dst, u32 id,
 		       long expires, u32 error)
 {
 	struct rta_cacheinfo ci = {
-		.rta_lastuse = jiffies_delta_to_clock_t(jiffies - dst->lastuse),
-		.rta_used = dst->__use,
-		.rta_clntref = atomic_read(&(dst->__refcnt)),
 		.rta_error = error,
 		.rta_id =  id,
 	};
 
+	if (dst) {
+		ci.rta_lastuse = jiffies_delta_to_clock_t(jiffies - dst->lastuse);
+		ci.rta_used = dst->__use;
+		ci.rta_clntref = atomic_read(&dst->__refcnt);
+	}
 	if (expires) {
 		unsigned long clock;
 
@@ -1242,10 +1244,10 @@ static u8 rtnl_xdp_attached_mode(struct net_device *dev, u32 *prog_id)
 		*prog_id = generic_xdp_prog->aux->id;
 		return XDP_ATTACHED_SKB;
 	}
-	if (!ops->ndo_xdp)
+	if (!ops->ndo_bpf)
 		return XDP_ATTACHED_NONE;
 
-	return __dev_xdp_attached(dev, ops->ndo_xdp, prog_id);
+	return __dev_xdp_attached(dev, ops->ndo_bpf, prog_id);
 }
 
 static int rtnl_xdp_fill(struct sk_buff *skb, struct net_device *dev)
