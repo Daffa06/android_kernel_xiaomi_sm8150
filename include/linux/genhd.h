@@ -431,6 +431,12 @@ static inline void set_capacity(struct gendisk *disk, sector_t size)
 	disk->part0.nr_sects = size;
 }
 
+static inline void set_capacity_and_notify(struct gendisk *disk, sector_t size)
+{
+	set_capacity(disk, size);
+	kobject_uevent(&disk_to_dev(disk)->kobj, KOBJ_CHANGE);
+}
+
 #ifdef CONFIG_SOLARIS_X86_PARTITION
 
 #define SOLARIS_X86_NUMSLICE	16
