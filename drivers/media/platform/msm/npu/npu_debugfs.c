@@ -145,8 +145,10 @@ int npu_debugfs_init(struct npu_device *npu_dev)
 
 	debugfs->root = debugfs_create_dir("npu", NULL);
 	if (IS_ERR_OR_NULL(debugfs->root)) {
-		pr_err("debugfs_create_dir for npu failed, error %ld\n",
+#ifdef CONFIG_DEBUG_FS
+		pr_debug("debugfs_create_dir for npu failed, error %ld\n",
 			PTR_ERR(debugfs->root));
+#endif
 		return -ENODEV;
 	}
 
