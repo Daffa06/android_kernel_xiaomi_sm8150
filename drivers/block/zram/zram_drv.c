@@ -1982,8 +1982,8 @@ static DEVICE_ATTR_RW(writeback_limit);
 static DEVICE_ATTR_RW(writeback_limit_enable);
 #endif
 #ifdef CONFIG_ZRAM_DEDUP
-static DEVICE_ATTR_RW(use_dedup);
-#else
+/* static DEVICE_ATTR_RW(use_dedup);
+#else */
 static DEVICE_ATTR_RO(use_dedup);
 #endif
 
