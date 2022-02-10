@@ -4363,7 +4363,7 @@ static void battery_authentic_work(struct work_struct *work)
 		retry_battery_authentic_result++;
 		if (retry_battery_authentic_result < BATTERY_AUTHENTIC_COUNT_MAX) {
 			pr_err("battery authentic work begin to restart.\n");
-			schedule_delayed_work(&chip->battery_authentic_work,
+			queue_delayed_work(system_power_efficient_wq, &chip->battery_authentic_work,
 				msecs_to_jiffies(battery_authentic_period_ms));
 		}
 
@@ -4372,11 +4372,11 @@ static void battery_authentic_work(struct work_struct *work)
 		}
 	} else {
 		pr_err("FG: authentic prop is %d\n", pval.intval);
-		schedule_delayed_work(&chip->ds_romid_work,
+		queue_delayed_work(system_power_efficient_wq, &chip->ds_romid_work,
 				msecs_to_jiffies(0));
-		schedule_delayed_work(&chip->ds_status_work,
+		queue_delayed_work(system_power_efficient_wq, &chip->ds_status_work,
 				msecs_to_jiffies(500));
-		schedule_delayed_work(&chip->ds_page0_work,
+		queue_delayed_work(system_power_efficient_wq, &chip->ds_page0_work,
 				msecs_to_jiffies(1000));
 	}
 }
@@ -4401,7 +4401,7 @@ static void ds_romid_work(struct work_struct *work)
 		retry_ds_romid++;
 		if (retry_ds_romid < DS_ROMID_COUNT_MAX) {
 			pr_err("battery authentic work begin to restart.\n");
-			schedule_delayed_work(&chip->ds_romid_work,
+			queue_delayed_work(system_power_efficient_wq, &chip->ds_romid_work,
 				msecs_to_jiffies(ds_romid_period_ms));
 		}
 
@@ -4437,7 +4437,7 @@ static void ds_status_work(struct work_struct *work)
 		retry_ds_status++;
 		if (retry_ds_status < DS_STATUS_COUNT_MAX) {
 			pr_err("battery authentic work begin to restart.\n");
-			schedule_delayed_work(&chip->ds_status_work,
+			queue_delayed_work(system_power_efficient_wq, &chip->ds_status_work,
 				msecs_to_jiffies(ds_status_period_ms));
 		}
 
@@ -4473,7 +4473,7 @@ static void ds_page0_work(struct work_struct *work)
 		retry_ds_page0++;
 		if (retry_ds_page0 < DS_PAGE0_COUNT_MAX) {
 			pr_err("battery authentic work begin to restart.\n");
-			schedule_delayed_work(&chip->ds_page0_work,
+			queue_delayed_work(system_power_efficient_wq, &chip->ds_page0_work,
 				msecs_to_jiffies(ds_page0_period_ms));
 		}
 
@@ -7107,6 +7107,9 @@ static void empty_restart_fg_work(struct work_struct *work)
 			pr_info("FG restart done\n");
 			if (batt_psy_initialized(fg))
 				power_supply_changed(fg->batt_psy);
+			cancel_delayed_work_sync(&fg->soc_monitor_work);
+			queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
+				msecs_to_jiffies(RESTART_FG_MONITOR_SOC_WAIT_PER_MS));
 		} else {
 			mod_delayed_work(system_freezable_power_efficient_wq, 
 					&fg->empty_restart_fg_work,
@@ -7310,9 +7313,17 @@ static void soc_monitor_work(struct work_struct *work)
 			fg->batt_temp_low = false;
 		}
 	}
-
-	schedule_delayed_work(&fg->soc_monitor_work,
+	if (chip->dt.fg_increase_100soc_time) {
+		if (!fg->soc_reporting_ready)
+			queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
+				msecs_to_jiffies(MONITOR_SOC_WAIT_READY));
+		else
+			queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
+				msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
+	} else {
+		queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
 			msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
+	}
 }
 #endif
 #endif
@@ -7631,7 +7642,7 @@ static int fg_gen4_probe(struct platform_device *pdev)
 		|| chip->battery_authentic_slave_result != true
 #endif
 	) {
-		schedule_delayed_work(&chip->battery_authentic_work,
+		queue_delayed_work(system_power_efficient_wq, &chip->battery_authentic_work,
 				msecs_to_jiffies(0));
 	}
 #endif
@@ -7830,7 +7841,7 @@ static int fg_gen4_resume(struct device *dev)
 
 #if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
 	fg->param.update_now = true;
-	schedule_delayed_work(&fg->soc_monitor_work,
+	queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
 				msecs_to_jiffies(MONITOR_SOC_WAIT_MS));
 #endif
 
