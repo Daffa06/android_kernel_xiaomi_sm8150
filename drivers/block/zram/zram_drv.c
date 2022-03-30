@@ -1896,47 +1896,49 @@ out_unlock:
 }
 
 static ssize_t reset_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t len)
+        struct device_attribute *attr, const char *buf, size_t len)
 {
-	int ret;
-	unsigned short do_reset;
-	struct zram *zram;
-	struct block_device *bdev;
+    int ret;
+    unsigned short do_reset;
+    struct zram *zram;
+    struct block_device *bdev;
 
-	ret = kstrtou16(buf, 10, &do_reset);
-	if (ret)
-		return ret;
+    ret = kstrtou16(buf, 10, &do_reset);
+    if (ret)
+        return ret;
 
-	if (!do_reset)
-		return -EINVAL;
+    if (!do_reset)
+        return -EINVAL;
 
-	zram = dev_to_zram(dev);
-	bdev = bdget_disk(zram->disk, 0);
-	if (!bdev)
-		return -ENOMEM;
+    zram = dev_to_zram(dev);
 
-	mutex_lock(&bdev->bd_mutex);
-	/* Do not reset an active device or claimed device */
-	if (bdev->bd_openers || zram->claim) {
-		mutex_unlock(&bdev->bd_mutex);
-		bdput(bdev);
-		return -EBUSY;
-	}
+    bdev = bdget_disk(zram->disk, 0);
+    if (!bdev)
+        return -ENOMEM;
 
-	/* From now on, anyone can't open /dev/zram[0-9] */
-	zram->claim = true;
-	mutex_unlock(&bdev->bd_mutex);
+    mutex_lock(&bdev->bd_mutex);
+    /* Do not reset an active device or claimed device */
+    if (bdev->bd_openers || zram->claim) {
+        mutex_unlock(&bdev->bd_mutex);
+        bdput(bdev);
+        return -EBUSY;
+    }
 
-	/* Make sure all the pending I/O are finished */
-	sync_blockdev(bdev);
-	zram_reset_device(zram);
-	bdput(bdev);
+    /* From now on, anyone can't open /dev/zram[0-9] */
+    zram->claim = true;
+    mutex_unlock(&bdev->bd_mutex);
 
-	mutex_lock(&bdev->bd_mutex);
-	zram->claim = false;
-	mutex_unlock(&bdev->bd_mutex);
+    /* Make sure all the pending I/O are finished */
+    sync_blockdev(bdev);
+    zram_reset_device(zram);
 
-	return len;
+    mutex_lock(&bdev->bd_mutex);
+    zram->claim = false;
+    mutex_unlock(&bdev->bd_mutex);
+
+    bdput(bdev);
+
+    return len;
 }
 
 static int zram_open(struct block_device *bdev, fmode_t mode)
