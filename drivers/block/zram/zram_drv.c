@@ -2116,11 +2116,11 @@ static int zram_remove(struct zram *zram)
     struct block_device *bdev;
     bool claimed;
 
+    /* 4.14 Legacy: Use bdget_disk and bd_mutex for synchronization */
     bdev = bdget_disk(zram->disk, 0);
     if (!bdev)
         return -ENOMEM;
 
-    /* Taktik 4.14: Kunci pakai bd_mutex */
     mutex_lock(&bdev->bd_mutex);
     if (bdev->bd_openers) {
         mutex_unlock(&bdev->bd_mutex);
@@ -2128,6 +2128,7 @@ static int zram_remove(struct zram *zram)
         return -EBUSY;
     }
 
+    /* 6.6 Backport: Check if the device was already claimed by reset_store */
     claimed = zram->claim;
     if (!claimed)
         zram->claim = true;
@@ -2137,12 +2138,12 @@ static int zram_remove(struct zram *zram)
 
     if (claimed) {
         /*
-         * If we were claimed by reset_store(), del_gendisk() will
-         * wait until reset_store() is done, so nothing need to do.
+         * If claimed by reset_store(), del_gendisk() will wait 
+         * until reset_store() finishes, so no sync is needed here.
          */
         ;
     } else {
-        /* Make sure all the pending I/O are finished */
+        /* Ensure pending I/O is flushed before resetting */
         sync_blockdev(bdev);
         zram_reset_device(zram);
     }
@@ -2151,15 +2152,15 @@ static int zram_remove(struct zram *zram)
 
     pr_info("Removed device: %s\n", zram->disk->disk_name);
 
+    /* Remove the disk device from the system */
     del_gendisk(zram->disk);
 
-    /* HEAD: del_gendisk drains pending reset_store, check the claim status */
+    /* Verify claim status consistency */
     WARN_ON_ONCE(claimed && zram->claim);
 
     /* 
-     * INCOMING: disksize_store() may be called in between zram_reset_device()
-     * and del_gendisk(), so run the last reset to avoid leaking
-     * anything allocated with disksize_store()
+     * Final reset to prevent memory leaks if disksize_store() was 
+     * called just before del_gendisk() completed.
      */
     zram_reset_device(zram);
 
