@@ -1182,15 +1182,14 @@ static ssize_t bd_stat_show(struct device *dev,
 static ssize_t debug_stat_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	int version = 1;
+	int version = 2;
 	struct zram *zram = dev_to_zram(dev);
 	ssize_t ret;
 
 	down_read(&zram->init_lock);
 	ret = scnprintf(buf, PAGE_SIZE,
-			"version: %d\n%8llu %8llu\n",
+			"version: %d\n%8llu\n",
 			version,
-			(u64)atomic64_read(&zram->stats.writestall),
 			(u64)atomic64_read(&zram->stats.miss_free));
 	up_read(&zram->init_lock);
 
@@ -1465,58 +1464,53 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 	}
 	kunmap_atomic(mem);
 
-	entry = zram_dedup_find(zram, page, &checksum);
-	if (entry) {
-		comp_len = entry->len;
-		goto out;
-	}
+	/* 
+     * Keep Deduplication if enabled 
+     */
+    entry = zram_dedup_find(zram, page, &checksum);
+    if (entry) {
+        comp_len = entry->len;
+        goto out;
+    }
 
-compress_again:
-	zstrm = zcomp_stream_get(zram->comp);
-	src = kmap_atomic(page);
-	ret = zcomp_compress(zstrm, src, &comp_len);
-	kunmap_atomic(src);
+    /* 
+     * 6.6 Logic: Compression is performed once. 
+     * No more 'compress_again' label (Double Compression removed).
+     */
+    zstrm = zcomp_stream_get(zram->comp);
+    src = kmap_atomic(page);
+    ret = zcomp_compress(zstrm, src, &comp_len);
+    kunmap_atomic(src);
 
-	if (unlikely(ret)) {
-		zcomp_stream_put(zram->comp);
-		pr_err("Compression failed! err=%d\n", ret);
-		if (entry)
-			zram_entry_free(zram, entry);
-		return ret;
-	}
+    if (unlikely(ret)) {
+        zcomp_stream_put(zram->comp);
+        pr_err("Compression failed! err=%d\n", ret);
+        return ret;
+    }
 
-	if (comp_len >= huge_class_size)
-		comp_len = PAGE_SIZE;
-	/*
-	 * entry allocation has 2 paths:
-	 * a) fast path is executed with preemption disabled (for
-	 *  per-cpu streams) and has __GFP_DIRECT_RECLAIM bit clear,
-	 *  since we can't sleep;
-	 * b) slow path enables preemption and attempts to allocate
-	 *  the page with __GFP_DIRECT_RECLAIM bit set. we have to
-	 *  put per-cpu compression stream and, thus, to re-do
-	 *  the compression once entry is allocated.
-	 *
-	 * if we have a 'non-null' entry here then we are coming
-	 * from the slow path and entry has already been allocated.
-	 */
-	if (!entry)
-		entry = zram_entry_alloc(zram, comp_len,
-				__GFP_KSWAPD_RECLAIM |
-				__GFP_NOWARN |
-				__GFP_HIGHMEM |
-				__GFP_MOVABLE |
-				__GFP_CMA);
-	if (!entry) {
-		zcomp_stream_put(zram->comp);
-		atomic64_inc(&zram->stats.writestall);
-		entry = zram_entry_alloc(zram, comp_len,
-				GFP_NOIO | __GFP_HIGHMEM |
-				__GFP_MOVABLE | __GFP_CMA);
-		if (entry)
-			goto compress_again;
-		return -ENOMEM;
-	}
+    if (comp_len >= huge_class_size)
+        comp_len = PAGE_SIZE;
+
+    /*
+     * 6.6-style Allocation: We allocate directly without retrying.
+     * Since you backported ZSMALLOC 6.6, this will be very efficient.
+     */
+    entry = zram_entry_alloc(zram, comp_len,
+                __GFP_KSWAPD_RECLAIM |
+                __GFP_NOWARN |
+                __GFP_HIGHMEM |
+                __GFP_MOVABLE |
+                __GFP_CMA);
+
+    if (unlikely(!entry)) {
+        zcomp_stream_put(zram->comp);
+        atomic64_inc(&zram->stats.writestall);
+        /* 
+         * No more goto compress_again. 
+         * If allocation fails, we just return ENOMEM.
+         */
+        return -ENOMEM;
+    }
 
 	alloced_pages = zs_get_total_pages(zram->mem_pool);
 	update_used_max(zram, alloced_pages);
