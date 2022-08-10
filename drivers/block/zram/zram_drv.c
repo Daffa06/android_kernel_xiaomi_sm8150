@@ -1187,14 +1187,15 @@ static ssize_t bd_stat_show(struct device *dev,
 static ssize_t debug_stat_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	int version = 2;
+	int version = 1;
 	struct zram *zram = dev_to_zram(dev);
 	ssize_t ret;
 
 	down_read(&zram->init_lock);
 	ret = scnprintf(buf, PAGE_SIZE,
-			"version: %d\n%8llu\n",
+			"version: %d\n%8llu %8llu\n",
 			version,
+			(u64)atomic64_read(&zram->stats.writestall),
 			(u64)atomic64_read(&zram->stats.miss_free));
 	up_read(&zram->init_lock);
 
@@ -1446,30 +1447,30 @@ out:
 }
 
 static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
-				u32 index, struct bio *bio)
+                u32 index, struct bio *bio)
 {
-	int ret = 0;
-	unsigned long alloced_pages;
-	struct zram_entry *entry = NULL;
-	unsigned int comp_len = 0;
-	void *src, *dst, *mem;
-	struct zcomp_strm *zstrm;
-	struct page *page = bvec->bv_page;
-	u32 checksum;
-	unsigned long element = 0;
-	enum zram_pageflags flags = 0;
+    int ret = 0;
+    unsigned long alloced_pages;
+    struct zram_entry *entry = NULL;
+    unsigned int comp_len = 0;
+    void *src, *dst, *mem;
+    struct zcomp_strm *zstrm;
+    struct page *page = bvec->bv_page;
+    u32 checksum;
+    unsigned long element = 0;
+    enum zram_pageflags flags = 0;
 
-	mem = kmap_atomic(page);
-	if (page_same_filled(mem, &element)) {
-		kunmap_atomic(mem);
-		/* Free memory associated with this sector now. */
-		flags = ZRAM_SAME;
-		atomic64_inc(&zram->stats.same_pages);
-		goto out;
-	}
-	kunmap_atomic(mem);
+    mem = kmap_atomic(page);
+    if (page_same_filled(mem, &element)) {
+        kunmap_atomic(mem);
+        /* Free memory associated with this sector now. */
+        flags = ZRAM_SAME;
+        atomic64_inc(&zram->stats.same_pages);
+        goto out;
+    }
+    kunmap_atomic(mem);
 
-	/* 
+    /* 
      * Keep Deduplication if enabled 
      */
     entry = zram_dedup_find(zram, page, &checksum);
@@ -1517,8 +1518,8 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
         return -ENOMEM;
     }
 
-	alloced_pages = zs_get_total_pages(zram->mem_pool);
-	update_used_max(zram, alloced_pages);
+    alloced_pages = zs_get_total_pages(zram->mem_pool);
+    update_used_max(zram, alloced_pages);
 
 	if (zram->limit_pages && alloced_pages > zram->limit_pages) {
 		zcomp_stream_put(zram->comp);
