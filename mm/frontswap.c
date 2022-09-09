@@ -190,26 +190,33 @@ EXPORT_SYMBOL(frontswap_tmem_exclusive_gets);
  */
 void __frontswap_init(unsigned type, unsigned long *map)
 {
-	struct swap_info_struct *sis = swap_info[type];
-	struct frontswap_ops *ops;
+    struct swap_info_struct *sis = swap_info[type];
+    struct frontswap_ops *ops;
 
-	VM_BUG_ON(sis == NULL);
+    VM_BUG_ON(sis == NULL);
 
-	/*
-	 * p->frontswap is a bitmap that we MUST have to figure out which page
-	 * has gone in frontswap. Without it there is no point of continuing.
-	 */
-	if (WARN_ON(!map))
-		return;
-	/*
-	 * Irregardless of whether the frontswap backend has been loaded
-	 * before this function or it will be later, we _MUST_ have the
-	 * p->frontswap set to something valid to work properly.
-	 */
-	frontswap_map_set(sis, map);
+    /*
+     * p->frontswap is a bitmap that we MUST have to figure out which page
+     * has gone in frontswap. Without it there is no point of continuing.
+     */
+    if (WARN_ON(!map))
+        return;
+    /*
+     * Irregardless of whether the frontswap backend has been loaded
+     * before this function or it will be later, we _MUST_ have the
+     * p->frontswap set to something valid to work properly.
+     */
+    frontswap_map_set(sis, map);
 
-	for_each_frontswap_ops(ops)
-		ops->init(type);
+    /* 
+     * 6.6 Safety check: Don't call init if frontswap is disabled.
+     * Combined with 4.14 multi-backend list architecture.
+     */
+    if (!frontswap_enabled())
+        return;
+
+    for_each_frontswap_ops(ops)
+        ops->init(type);
 }
 EXPORT_SYMBOL(__frontswap_init);
 
