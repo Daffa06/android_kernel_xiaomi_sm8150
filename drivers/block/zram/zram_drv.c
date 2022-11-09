@@ -1018,38 +1018,57 @@ static ssize_t comp_algorithm_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	down_read(&zram->init_lock);
-	sz = zcomp_available_show(zram->compressor, buf);
+	sz = zcomp_available_show(zram->comp_algs[ZRAM_PRIMARY_COMP], buf);
 	up_read(&zram->init_lock);
 
 	return sz;
 }
 
-static ssize_t comp_algorithm_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t len)
+static void comp_algorithm_set(struct zram *zram, u32 prio, const char *alg)
 {
-	struct zram *zram = dev_to_zram(dev);
-	char compressor[ARRAY_SIZE(zram->compressor)];
-	size_t sz;
+	/* Do not kfree() algs that we didn't allocate, IOW the default ones */
+	if (zram->comp_algs[prio] != default_compressor)
+		kfree(zram->comp_algs[prio]);
+	zram->comp_algs[prio] = alg;
+}
 
-	strlcpy(compressor, buf, sizeof(compressor));
-	/* ignore trailing newline */
-	sz = strlen(compressor);
-	if (sz > 0 && compressor[sz - 1] == '\n')
-		compressor[sz - 1] = 0x00;
+static ssize_t comp_algorithm_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t len)
+{
+    struct zram *zram = dev_to_zram(dev);
+    char *compressor;
+    size_t sz;
 
-	if (!zcomp_available_algorithm(compressor))
-		return -EINVAL;
+    /* 6.6 Logic: Secure string handling and heap allocation */
+    sz = strlen(buf);
+    if (sz >= CRYPTO_MAX_ALG_NAME)
+        return -E2BIG;
 
-	down_write(&zram->init_lock);
-	if (init_done(zram)) {
-		up_write(&zram->init_lock);
-		pr_info("Can't change algorithm for initialized device\n");
-		return -EBUSY;
-	}
+    compressor = kstrdup(buf, GFP_KERNEL);
+    if (!compressor)
+        return -ENOMEM;
 
-	strcpy(zram->compressor, compressor);
-	up_write(&zram->init_lock);
-	return len;
+    /* ignore trailing newline */
+    if (sz > 0 && compressor[sz - 1] == '\n')
+        compressor[sz - 1] = 0x00;
+
+    if (!zcomp_available_algorithm(compressor)) {
+        kfree(compressor);
+        return -EINVAL;
+    }
+
+    down_write(&zram->init_lock);
+    if (init_done(zram)) {
+        up_write(&zram->init_lock);
+        kfree(compressor);
+        pr_info("Can't change algorithm for initialized device\n");
+        return -EBUSY;
+    }
+
+    /* Set as Primary Compressor */
+    comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, compressor);
+    up_write(&zram->init_lock);
+    return len;
 }
 
 static ssize_t use_dedup_show(struct device *dev,
@@ -1387,21 +1406,21 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 
 	size = zram_get_obj_size(zram, index);
 
-	if (size != PAGE_SIZE)
-        zstrm = zcomp_stream_get(zram->comp);
+    if (size != PAGE_SIZE)
+        zstrm = zcomp_stream_get(zram->comps[ZRAM_PRIMARY_COMP]);
 
     src = zs_map_object(zram->mem_pool, zram_entry_handle(zram, entry), ZS_MM_RO);
-	if (size == PAGE_SIZE) {
-		dst = kmap_atomic(page);
-		memcpy(dst, src, PAGE_SIZE);
-		kunmap_atomic(dst);
-		ret = 0;
-	} else {
-		dst = kmap_atomic(page);
-		ret = zcomp_decompress(zstrm, src, size, dst);
-		kunmap_atomic(dst);
-		zcomp_stream_put(zram->comp);
-	}
+    if (size == PAGE_SIZE) {
+        dst = kmap_atomic(page);
+        memcpy(dst, src, PAGE_SIZE);
+        kunmap_atomic(dst);
+        ret = 0;
+    } else {
+        dst = kmap_atomic(page);
+        ret = zcomp_decompress(zstrm, src, size, dst);
+        kunmap_atomic(dst);
+        zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
+    }
 	zs_unmap_object(zram->mem_pool, zram_entry_handle(zram, entry));
 	zram_slot_unlock(zram, index);
 
@@ -1476,17 +1495,14 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
         goto out;
     }
 
-    /* 
-     * 6.6 Logic: Compression is performed once. 
-     * No more 'compress_again' label (Double Compression removed).
-     */
-    zstrm = zcomp_stream_get(zram->comp);
+    /* 6.6 Multi-Comp Logic: Get primary compression stream */
+    zstrm = zcomp_stream_get(zram->comps[ZRAM_PRIMARY_COMP]);
     src = kmap_atomic(page);
     ret = zcomp_compress(zstrm, src, &comp_len);
     kunmap_atomic(src);
 
     if (unlikely(ret)) {
-        zcomp_stream_put(zram->comp);
+        zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
         pr_err("Compression failed! err=%d\n", ret);
         return ret;
     }
@@ -1494,24 +1510,14 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
     if (comp_len >= huge_class_size)
         comp_len = PAGE_SIZE;
 
-    /*
-     * 6.6-style Allocation: We allocate directly without retrying.
-     * Since you backported ZSMALLOC 6.6, this will be very efficient.
-     */
+    /* Fast path allocation (No-Retry logic maintained) */
     entry = zram_entry_alloc(zram, comp_len,
-                __GFP_KSWAPD_RECLAIM |
-                __GFP_NOWARN |
-                __GFP_HIGHMEM |
-                __GFP_MOVABLE |
-                __GFP_CMA);
+                __GFP_KSWAPD_RECLAIM | __GFP_NOWARN |
+                __GFP_HIGHMEM | __GFP_MOVABLE | __GFP_CMA);
 
     if (unlikely(!entry)) {
-        zcomp_stream_put(zram->comp);
+        zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
         atomic64_inc(&zram->stats.writestall);
-        /* 
-         * No more goto compress_again. 
-         * If allocation fails, we just return ENOMEM.
-         */
         return -ENOMEM;
     }
 
@@ -1519,7 +1525,7 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
     update_used_max(zram, alloced_pages);
 
 	if (zram->limit_pages && alloced_pages > zram->limit_pages) {
-		zcomp_stream_put(zram->comp);
+		zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
 		zram_entry_free(zram, entry);
 		return -ENOMEM;
 	}
@@ -1534,7 +1540,7 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 	if (comp_len == PAGE_SIZE)
 		kunmap_atomic(src);
 
-	zcomp_stream_put(zram->comp);
+	zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
 	zs_unmap_object(zram->mem_pool, zram_entry_handle(zram, entry));
 	atomic64_add(comp_len, &zram->stats.compr_data_size);
 	zram_dedup_insert(zram, entry, checksum);
@@ -1817,6 +1823,20 @@ out:
 	return ret;
 }
 
+static void zram_destroy_comps(struct zram *zram)
+{
+	u32 prio;
+
+	for (prio = 0; prio < ZRAM_MAX_COMPS; prio++) {
+		struct zcomp *comp = zram->comps[prio];
+
+		zram->comps[prio] = NULL;
+		if (!comp)
+			continue;
+		zcomp_destroy(comp);
+	}
+}
+
 static void zram_reset_device(struct zram *zram)
 {
 	down_write(&zram->init_lock);
@@ -1834,11 +1854,11 @@ static void zram_reset_device(struct zram *zram)
 	/* I/O operation under all of CPU are done so let's free */
 	zram_meta_free(zram, zram->disksize);
 	zram->disksize = 0;
+	zram_destroy_comps(zram);
 	memset(&zram->stats, 0, sizeof(zram->stats));
-	zcomp_destroy(zram->comp);
-	zram->comp = NULL;
 	reset_bdev(zram);
 
+	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
 	up_write(&zram->init_lock);
 }
 
@@ -1849,6 +1869,7 @@ static ssize_t disksize_store(struct device *dev,
 	struct zcomp *comp;
 	struct zram *zram = dev_to_zram(dev);
 	int err;
+	u32 prio;
 
 	disksize = memparse(buf, NULL);
 	if (!disksize)
@@ -1867,22 +1888,28 @@ static ssize_t disksize_store(struct device *dev,
 		goto out_unlock;
 	}
 
-	comp = zcomp_create(zram->compressor);
-	if (IS_ERR(comp)) {
-		pr_err("Cannot initialise %s compressing backend\n",
-				zram->compressor);
-		err = PTR_ERR(comp);
-		goto out_free_meta;
-	}
+	for (prio = 0; prio < ZRAM_MAX_COMPS; prio++) {
+		if (!zram->comp_algs[prio])
+			continue;
 
-	zram->comp = comp;
+		comp = zcomp_create(zram->comp_algs[prio]);
+		if (IS_ERR(comp)) {
+			pr_err("Cannot initialise %s compressing backend\n",
+			       zram->comp_algs[prio]);
+			err = PTR_ERR(comp);
+			goto out_free_comps;
+		}
+
+		zram->comps[prio] = comp;
+	}
 	zram->disksize = disksize;
 	set_capacity_and_notify(zram->disk, zram->disksize >> SECTOR_SHIFT);
 	up_write(&zram->init_lock);
 
 	return len;
 
-out_free_meta:
+out_free_comps:
+	zram_destroy_comps(zram);
 	zram_meta_free(zram, disksize);
 out_unlock:
 	up_write(&zram->init_lock);
@@ -2090,11 +2117,12 @@ static int zram_add(void)
 
     add_disk(zram->disk);
 
-    strlcpy(zram->compressor, default_compressor, sizeof(zram->compressor));
+    /* 6.6 Logic: Set default compressor to the primary slot */
+    zram->comp_algs[ZRAM_PRIMARY_COMP] = default_compressor;
 
-	zram_debugfs_register(zram);
-	pr_info("Added device: %s\n", zram->disk->disk_name);
-	return device_id;
+    zram_debugfs_register(zram);
+    pr_info("Added device: %s\n", zram->disk->disk_name);
+    return device_id;
 
 out_free_queue:
 	blk_cleanup_queue(queue);
