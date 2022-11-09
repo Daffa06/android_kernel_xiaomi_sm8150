@@ -1456,32 +1456,37 @@ out:
 		~(1UL << ZRAM_LOCK | 1UL << ZRAM_UNDER_WB));
 }
 
-static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
-				struct bio *bio, bool partial_io)
+/*
+ * Reads a page from the writeback devices. Corresponding ZRAM slot
+ * should be unlocked.
+ */
+static int zram_bvec_read_from_bdev(struct zram *zram, struct page *page,
+				    u32 index, struct bio *bio, bool partial_io)
+{
+	struct bio_vec bvec = {
+		.bv_page = page,
+		.bv_len = PAGE_SIZE,
+		.bv_offset = 0,
+	};
+
+	return read_from_bdev(zram, &bvec, zram_get_element(zram, index), bio,
+			      partial_io);
+}
+
+/*
+ * Reads (decompresses if needed) a page from zspool (zsmalloc).
+ * Corresponding ZRAM slot should be locked.
+ */
+static int zram_read_from_zspool(struct zram *zram, struct page *page,
+				 u32 index)
 {
 	struct zcomp_strm *zstrm = NULL;
-    struct zram_entry *entry;
-    unsigned int size;
-    void *src, *dst;
-    int ret;
+	struct zram_entry *entry;
+	unsigned int size;
+	void *src, *dst;
+	int ret;
 
-	zram_slot_lock(zram, index);
-	if (zram_test_flag(zram, index, ZRAM_WB)) {
-		struct bio_vec bvec;
-
-		zram_slot_unlock(zram, index);
-		/* A null bio means rw_page was used, we must fallback to bio */
-		if (!bio)
-			return -EOPNOTSUPP;
-
-		bvec.bv_page = page;
-		bvec.bv_len = PAGE_SIZE;
-		bvec.bv_offset = 0;
-		return read_from_bdev(zram, &bvec,
-				zram_get_element(zram, index),
-				bio, partial_io);
-	}
-
+	/* Keep using zram_entry for Deduplication support */
 	entry = zram_get_entry(zram, index);
 	if (!entry || zram_test_flag(zram, index, ZRAM_SAME)) {
 		unsigned long value;
@@ -1491,64 +1496,64 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 		mem = kmap_atomic(page);
 		zram_fill_page(mem, PAGE_SIZE, value);
 		kunmap_atomic(mem);
-		zram_slot_unlock(zram, index);
 		return 0;
 	}
 
 	size = zram_get_obj_size(zram, index);
 
-    if (size != PAGE_SIZE)
-        zstrm = zcomp_stream_get(zram->comps[ZRAM_PRIMARY_COMP]);
+	if (size != PAGE_SIZE)
+		zstrm = zcomp_stream_get(zram->comps[ZRAM_PRIMARY_COMP]);
 
-    src = zs_map_object(zram->mem_pool, zram_entry_handle(zram, entry), ZS_MM_RO);
-    if (size == PAGE_SIZE) {
-        dst = kmap_atomic(page);
-        memcpy(dst, src, PAGE_SIZE);
-        kunmap_atomic(dst);
-        ret = 0;
-    } else {
-        dst = kmap_atomic(page);
-        ret = zcomp_decompress(zstrm, src, size, dst);
-        kunmap_atomic(dst);
-        zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
-    }
+	/* Use Hybrid mapping for zram_entry */
+	src = zs_map_object(zram->mem_pool, zram_entry_handle(zram, entry), ZS_MM_RO);
+	if (size == PAGE_SIZE) {
+		dst = kmap_atomic(page);
+		memcpy(dst, src, PAGE_SIZE);
+		kunmap_atomic(dst);
+		ret = 0;
+	} else {
+		dst = kmap_atomic(page);
+		ret = zcomp_decompress(zstrm, src, size, dst);
+		kunmap_atomic(dst);
+		zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
+	}
 	zs_unmap_object(zram->mem_pool, zram_entry_handle(zram, entry));
-	zram_slot_unlock(zram, index);
-
-	/* Should NEVER happen. Return bio error if it does. */
-	if (WARN_ON(ret))
-		pr_err("Decompression failed! err=%d, page=%u\n", ret, index);
-
 	return ret;
 }
 
-static int zram_bvec_read(struct zram *zram, struct bio_vec *bvec,
-				u32 index, int offset, struct bio *bio)
+static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
+			    struct bio *bio, bool partial_io)
 {
 	int ret;
-	struct page *page;
 
-	page = bvec->bv_page;
-	if (is_partial_io(bvec)) {
-		/* Use a temporary buffer to decompress the page */
-		page = alloc_page(GFP_NOIO|__GFP_HIGHMEM);
-		if (!page)
-			return -ENOMEM;
+	zram_slot_lock(zram, index);
+	if (!zram_test_flag(zram, index, ZRAM_WB)) {
+		/* Non-Writeback Path: Read from compressed RAM */
+		ret = zram_read_from_zspool(zram, page, index);
+		zram_slot_unlock(zram, index);
+	} else {
+		struct bio_vec bvec;
+
+		/* Writeback Path: Read from backing device (disk) */
+		zram_slot_unlock(zram, index);
+
+		/* A null bio means rw_page was used, we must fallback to bio */
+		if (!bio)
+			return -EOPNOTSUPP;
+
+		bvec.bv_page = page;
+		bvec.bv_len = PAGE_SIZE;
+		bvec.bv_offset = 0;
+
+		/* Maintain 4.14-style call to read_from_bdev */
+		ret = read_from_bdev(zram, &bvec,
+				     zram_get_element(zram, index),
+				     bio, partial_io);
 	}
 
-	ret = __zram_bvec_read(zram, page, index, bio, is_partial_io(bvec));
-	if (unlikely(ret))
-		goto out;
-
-	if (is_partial_io(bvec)) {
-		void *src = kmap_atomic(page);
-
-		memcpy_to_bvec(bvec, src + offset);
-		kunmap_atomic(src);
-	}
-out:
-	if (is_partial_io(bvec))
-		__free_page(page);
+	/* Should NEVER happen. Return bio error if it does. */
+	if (WARN_ON(ret < 0))
+		pr_err("Decompression failed! err=%d, page=%u\n", ret, index);
 
 	return ret;
 }
