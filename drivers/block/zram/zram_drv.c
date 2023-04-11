@@ -1556,6 +1556,34 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	return ret;
 }
 
+static int zram_bvec_read(struct zram *zram, struct bio_vec *bvec,
+              u32 index, int offset, struct bio *bio)
+{
+    int ret;
+    struct page *page;
+
+    page = bvec->bv_page;
+    if (is_partial_io(bvec)) {
+        /* Use a temporary buffer to decompress the page */
+        /* 6.6 Fix: Removed __GFP_HIGHMEM for stability */
+        page = alloc_page(GFP_NOIO);
+        if (!page)
+            return -ENOMEM;
+    }
+
+    ret = __zram_bvec_read(zram, page, index, bio, is_partial_io(bvec));
+    if (unlikely(ret))
+        goto out;
+
+    if (is_partial_io(bvec))
+        memcpy_to_bvec(bvec, page_address(page) + offset);
+out:
+    if (is_partial_io(bvec))
+        __free_page(page);
+
+    return ret;
+}
+
 static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
                 u32 index, struct bio *bio)
 {
@@ -1675,12 +1703,11 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 
 	vec = *bvec;
 	if (is_partial_io(bvec)) {
-		void *dst;
 		/*
 		 * This is a partial IO. We need to read the full page
 		 * before to write the changes.
 		 */
-		page = alloc_page(GFP_NOIO|__GFP_HIGHMEM);
+		page = alloc_page(GFP_NOIO);
 		if (!page)
 			return -ENOMEM;
 
@@ -1688,9 +1715,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		if (ret)
 			goto out;
 
-		dst = kmap_atomic(page);
-		memcpy_from_bvec(dst + offset, bvec);
-		kunmap_atomic(dst);
+		memcpy_from_bvec(page_address(page) + offset, bvec);
 
 		bvec_set_page(&vec, page, PAGE_SIZE, 0);
 	}
