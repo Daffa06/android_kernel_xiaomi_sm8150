@@ -2044,15 +2044,6 @@ static void __zram_make_request(struct zram *zram, struct bio *bio)
 	struct bio_vec bv;
 	unsigned long start_time;
 
-	switch (bio_op(bio)) {
-	case REQ_OP_DISCARD:
-	case REQ_OP_WRITE_ZEROES:
-		zram_bio_discard(zram, bio);
-		return;
-	default:
-		break;
-	}
-
 	start_time = bio_start_io_acct(bio);
 	bio_for_each_segment(bv, bio, iter) {
 		u32 index = iter.bi_sector >> SECTORS_PER_PAGE_SHIFT;
@@ -2081,14 +2072,28 @@ static blk_qc_t zram_make_request(struct request_queue *queue, struct bio *bio)
 {
 	struct zram *zram = bio->bi_disk->private_data;
 
-	__zram_make_request(zram, bio);
-	return BLK_QC_T_NONE;
+	/* 
+	 * 6.6 Dispatcher Logic: Explicitly handle each operation type.
+	 * This ensures efficient routing of I/O requests.
+	 */
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+	case REQ_OP_WRITE:
+		__zram_make_request(zram, bio);
+		break;
+	case REQ_OP_DISCARD:
+	case REQ_OP_WRITE_ZEROES:
+		zram_bio_discard(zram, bio);
+		break;
+	default:
+		/* Safety net for unsupported operations */
+		WARN_ON_ONCE(1);
+		bio_endio(bio);
+	}
 
-error:
-	bio_io_error(bio);
+	/* 4.14 Requirement: Always return BLK_QC_T_NONE for make_request_fn */
 	return BLK_QC_T_NONE;
 }
-
 static void zram_slot_free_notify(struct block_device *bdev,
 				unsigned long index)
 {
