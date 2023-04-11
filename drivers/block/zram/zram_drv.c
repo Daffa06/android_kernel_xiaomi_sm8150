@@ -1519,8 +1519,8 @@ static int zram_read_from_zspool(struct zram *zram, struct page *page,
 	return ret;
 }
 
-static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
-			    struct bio *bio, bool partial_io)
+static int zram_read_page(struct zram *zram, struct page *page, u32 index,
+			  struct bio *bio, bool partial_io)
 {
 	int ret;
 
@@ -1571,9 +1571,9 @@ static int zram_bvec_read(struct zram *zram, struct bio_vec *bvec,
             return -ENOMEM;
     }
 
-    ret = __zram_bvec_read(zram, page, index, bio, is_partial_io(bvec));
-    if (unlikely(ret))
-        goto out;
+	ret = zram_read_page(zram, page, index, bio, is_partial_io(bvec));
+	if (unlikely(ret))
+		goto out;
 
     if (is_partial_io(bvec))
         memcpy_to_bvec(bvec, page_address(page) + offset);
@@ -1711,7 +1711,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		if (!page)
 			return -ENOMEM;
 
-		ret = __zram_bvec_read(zram, page, index, bio, true);
+		ret = zram_read_page(zram, page, index, bio, true);
 		if (ret)
 			goto out;
 
