@@ -595,27 +595,31 @@ static void zram_page_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
-/*
- * Returns 1 if the submission is successful.
- */
-static int read_from_bdev_async(struct zram *zram, struct page *page,
+static void read_from_bdev_async(struct zram *zram, struct page *page,
 			unsigned long entry, struct bio *parent)
 {
 	struct bio *bio;
 
+	/* 
+	 * 4.14 Block Layer API: bio_alloc only takes 2 arguments (gfp_mask, nr_iovecs).
+	 * We must NOT use the 6.6 bio_alloc signature here.
+	 */
 	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio)
-		return -ENOMEM;
+		return; /* 6.6 Logic: Function is now void, return early without error code */
 
 	bio->bi_iter.bi_sector = entry * (PAGE_SIZE >> 9);
 	
-	/* 4.14 Requirement for WRITEBACK */
+	/* 4.14 Requirement: Explicitly set the block device for writeback routing */
 	bio_set_dev(bio, zram->bdev);
 	
-	/* 6.6 directly use 'page', never use bvec */
+	/* 
+	 * Keep using bio_add_page safely instead of __bio_add_page.
+	 * Return without error code per 6.6 design if adding page fails.
+	 */
 	if (!bio_add_page(bio, page, PAGE_SIZE, 0)) {
 		bio_put(bio);
-		return -EIO;
+		return;
 	}
 
 	if (!parent) {
@@ -627,7 +631,6 @@ static int read_from_bdev_async(struct zram *zram, struct page *page,
 	}
 
 	submit_bio(bio);
-	return 1;
 }
 
 #define PAGE_WB_SIG "page_index="
@@ -857,7 +860,8 @@ static int read_from_bdev(struct zram *zram, struct page *page,
 			return -EIO;
 		return read_from_bdev_sync(zram, page, entry, parent);
 	}
-	return read_from_bdev_async(zram, page, entry, parent);
+	read_from_bdev_async(zram, page, entry, parent);
+	return 1;
 }
 #else
 static inline void reset_bdev(struct zram *zram) {};
