@@ -5776,7 +5776,6 @@ static int smb5_probe(struct platform_device *pdev)
 	if (chg->dcin_uusb_over_gpio_en && gpio_is_valid(chg->micro_usb_gpio))
 		smb_micro_usb_irq_handler(chg->micro_usb_irq, chg);
 
-	queue_delayed_work(system_power_efficient_wq, &chg->reg_work, 30 * HZ);
 	pr_info("QPNP SMB5 probed successfully\n");
 #ifdef CONFIG_MACH_XIAOMI_SM8150
 	smblib_support_liquid_feature(chg);

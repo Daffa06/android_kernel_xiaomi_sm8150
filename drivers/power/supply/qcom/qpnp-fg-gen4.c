@@ -7006,6 +7006,8 @@ static int fg_gen4_parse_dt(struct fg_gen4_chip *chip)
 
 #ifdef CONFIG_MACH_XIAOMI_SM8150
 #define SOC_WORK_MS     20000
+#define MONITOR_SOC_WAIT_MS	1000
+#define MONITOR_SOC_WAIT_PER_MS	10000
 static void soc_work_fn(struct work_struct *work)
 {
 	struct fg_dev *fg = container_of(work,
@@ -7109,7 +7111,7 @@ static void empty_restart_fg_work(struct work_struct *work)
 				power_supply_changed(fg->batt_psy);
 			cancel_delayed_work_sync(&fg->soc_monitor_work);
 			queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
-				msecs_to_jiffies(RESTART_FG_MONITOR_SOC_WAIT_PER_MS));
+				msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
 		} else {
 			mod_delayed_work(system_freezable_power_efficient_wq, 
 					&fg->empty_restart_fg_work,
@@ -7270,8 +7272,6 @@ static int fg_dynamic_set_cutoff_voltage(struct fg_dev *fg,
 #define LOW_DISCHARGE_TEMP_TRH			150
 #define LOW_DISCHARGE_TEMP_HYS			20
 #define LOW_TEMP_CUTOFF_VOL_MV			3200
-#define MONITOR_SOC_WAIT_MS	1000
-#define MONITOR_SOC_WAIT_PER_MS	10000
 static void soc_monitor_work(struct work_struct *work)
 {
 	int rc;
@@ -7313,17 +7313,8 @@ static void soc_monitor_work(struct work_struct *work)
 			fg->batt_temp_low = false;
 		}
 	}
-	if (chip->dt.fg_increase_100soc_time) {
-		if (!fg->soc_reporting_ready)
-			queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
-				msecs_to_jiffies(MONITOR_SOC_WAIT_READY));
-		else
-			queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
-				msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
-	} else {
-		queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
-			msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
-	}
+	queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
+		msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
 }
 #endif
 #endif
@@ -7712,11 +7703,8 @@ static int fg_gen4_probe(struct platform_device *pdev)
 
 #if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
 	fg->param.batt_soc = -EINVAL;
-	if (chip->dt.fg_increase_100soc_time) {
-        mod_delayed_work(system_freezable_power_efficient_wq, &fg->soc_monitor_work, msecs_to_jiffies(0));
-	} else {
-        mod_delayed_work(system_freezable_power_efficient_wq, &fg->soc_monitor_work, msecs_to_jiffies(5*MONITOR_SOC_WAIT_MS));
-	}
+	queue_delayed_work(system_power_efficient_wq, &fg->soc_monitor_work,
+        msecs_to_jiffies(MONITOR_SOC_WAIT_PER_MS));
 #endif
 
 	/*
