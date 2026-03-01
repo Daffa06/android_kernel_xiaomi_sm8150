@@ -12,6 +12,7 @@
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/string.h>
 #include <linux/device.h>
 #include <linux/regmap.h>
 #include <linux/delay.h>
@@ -30,6 +31,11 @@
 #include "step-chg-jeita.h"
 #include "storm-watch.h"
 #include "schgm-flash.h"
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+
+int custom_watt_limit = 0;
+EXPORT_SYMBOL(custom_watt_limit);
 
 #define smblib_err(chg, fmt, ...)		\
 	pr_err("%s: %s: " fmt, chg->name,	\
@@ -752,6 +758,17 @@ int smblib_set_charge_param(struct smb_charger *chg,
 {
 	int rc = 0;
 	u8 val_raw;
+
+	if (param == &chg->param.fcc && custom_watt_limit > 0) {
+        if (custom_watt_limit == 33) {
+            val_u = 6000000;
+        } else if (custom_watt_limit == 24) {
+            val_u = 4500000;
+        } else if (custom_watt_limit == 18) {
+            val_u = 3300000;
+        }
+        smblib_dbg(chg, PR_MISC, "Charging Status: Limit apply to %d uA\n", val_u);
+	}
 
 	if (param->set_proc) {
 		rc = param->set_proc(param, val_u, &val_raw);
@@ -11928,6 +11945,49 @@ int smblib_deinit(struct smb_charger *chg)
 
 	return 0;
 }
+
+static ssize_t watt_limit_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) 
+{
+    return sprintf(buf, "%s %s %s %s\n",
+        (custom_watt_limit == 0) ? "[Dynamic]" : "Dynamic",
+        (custom_watt_limit == 18) ? "[18W]" : "18W",
+        (custom_watt_limit == 24) ? "[24W]" : "24W",
+        (custom_watt_limit == 33) ? "[33W]" : "33W");
+}
+
+static ssize_t watt_limit_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) 
+{    
+    if (sysfs_streq(buf, "Dynamic") || sysfs_streq(buf, "0")) {
+        custom_watt_limit = 0;
+    } else if (sysfs_streq(buf, "18W") || sysfs_streq(buf, "18")) {
+        custom_watt_limit = 18;
+    } else if (sysfs_streq(buf, "24W") || sysfs_streq(buf, "24")) {
+        custom_watt_limit = 24;
+    } else if (sysfs_streq(buf, "33W") || sysfs_streq(buf, "33")) {
+        custom_watt_limit = 33;
+    } else {
+        pr_err("QuickCharge: Command text not register at list!\n");
+        return -EINVAL; 
+    }
+    pr_info("QuickCharge: Success switch to %d\n", custom_watt_limit);
+    return count;
+}
+static struct kobj_attribute watt_limit_attr = __ATTR(watt_limit, 0664, watt_limit_show, watt_limit_store);
+
+static struct kobject *fast_charge_kobj;
+static int __init fast_charge_sysfs_init(void) 
+{
+    int error;
+    
+    fast_charge_kobj = kobject_create_and_add("fast_charge", kernel_kobj);
+    if (!fast_charge_kobj) return -ENOMEM;
+
+    error = sysfs_create_file(fast_charge_kobj, &watt_limit_attr.attr);
+    if (error) pr_err("QuickCharge: Gagal membuat file sysfs!\n");
+
+    return error;
+}
+late_initcall(fast_charge_sysfs_init);
 
 #ifdef CONFIG_MACH_XIAOMI_SM8150
 static int __init early_parse_off_charge_flag(char *p)
