@@ -761,7 +761,7 @@ int smblib_set_charge_param(struct smb_charger *chg,
 
 	if (param == &chg->param.fcc && custom_watt_limit > 0) {
         if (custom_watt_limit == 33) {
-            val_u = 6000000;
+            val_u = 5900000;
         } else if (custom_watt_limit == 24) {
             val_u = 4500000;
         } else if (custom_watt_limit == 18) {
