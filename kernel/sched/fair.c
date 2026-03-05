@@ -1017,8 +1017,10 @@ static void update_curr(struct cfs_rq *cfs_rq)
 #ifdef CONFIG_SCHED_BORE
 	curr->burst_time += delta_exec;
 	update_burst_penalty(curr);
-#endif // CONFIG_SCHED_BORE
 	curr->vruntime += max(1ULL, calc_delta_fair(delta_exec, curr));
+#else // CONFIG_SCHED_BORE
+	curr->vruntime += calc_delta_fair(delta_exec, curr);
+#endif
 	update_min_vruntime(cfs_rq);
 
 	if (entity_is_task(curr)) {
@@ -8965,6 +8967,8 @@ static void yield_task_fair(struct rq *rq)
 #if !defined(CONFIG_SCHED_BORE)
 	if (unlikely(rq->nr_running == 1))
 		return;
+
+	clear_buddies(cfs_rq, se);
 #endif
 
 	update_rq_clock(rq);
@@ -8977,9 +8981,9 @@ static void yield_task_fair(struct rq *rq)
 	restart_burst(se);
 	if (unlikely(rq->nr_running == 1))
 		return;
-#endif
 
 	clear_buddies(cfs_rq, se);
+#endif
 
 	/*
 	 * Tell update_rq_clock() that we've just updated,
