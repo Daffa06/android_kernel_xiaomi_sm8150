@@ -61,6 +61,18 @@ config INIT_ENV_ARG_LIMIT
 	  variables passed to init from the kernel command line.
 
 
+config CC_IS_CLANG
+	bool "Set compiler to Clang"
+	help
+	  Enable this option if you are compiling the kernel using the
+	  LLVM/Clang compiler.
+
+	  This is a manual backport to simulate the compiler detection
+	  system found in newer Kbuild versions (4.18+). Enabling this
+	  allows modern Clang-specific features such as AutoFDO (Sampling
+	  PGO), LTO, and CFI to be properly evaluated and configured in
+	  older kernels.
+
 config CROSS_COMPILE
 	string "Cross-compiler tool prefix"
 	help
@@ -1200,6 +1212,20 @@ config BLK_DEV_INITRD
 	  If unsure say Y.
 
 if BLK_DEV_INITRD
+
+config AUTOFDO_CLANG
+	bool "Enable Clang AutoFDO (Sampling-based PGO)"
+	depends on CC_IS_CLANG
+	help
+	  This option enables Clang's sampling-based Profile-Guided
+	  Optimization (AutoFDO).
+
+	  AutoFDO utilizes hardware performance counters to profile 
+	  the kernel, eliminating the need for instrumentation overhead.
+
+	  To use this feature, you must place a valid LLVM profile
+	  named 'vmlinux.profdata' in the root directory of your
+	  kernel source tree before compilation.
 
 source "usr/Kconfig"
 
