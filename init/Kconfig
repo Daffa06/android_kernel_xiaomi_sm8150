@@ -1213,20 +1213,6 @@ config BLK_DEV_INITRD
 
 if BLK_DEV_INITRD
 
-config AUTOFDO_CLANG
-	bool "Enable Clang AutoFDO (Sampling-based PGO)"
-	depends on CC_IS_CLANG
-	help
-	  This option enables Clang's sampling-based Profile-Guided
-	  Optimization (AutoFDO).
-
-	  AutoFDO utilizes hardware performance counters to profile 
-	  the kernel, eliminating the need for instrumentation overhead.
-
-	  To use this feature, you must place a valid LLVM profile
-	  named 'vmlinux.profdata' in the root directory of your
-	  kernel source tree before compilation.
-
 source "usr/Kconfig"
 
 endif
