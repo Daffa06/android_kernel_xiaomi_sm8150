@@ -60,6 +60,14 @@ $(obj)/Image.gz: $(obj)/Image FORCE
 $(obj)/Image.lz4: $(obj)/Image FORCE
 	$(call if_changed,lz4)
 
+ifdef CONFIG_KERNEL_ZSTD_ULTRA
+$(obj)/Image.zst: $(obj)/Image FORCE
+	$(call if_changed,zstd22)
+else
+$(obj)/Image.zst: $(obj)/Image FORCE
+	$(call if_changed,zstd)
+endif
+
 $(obj)/Image.lzma: $(obj)/Image FORCE
 	$(call if_changed,lzma)
 

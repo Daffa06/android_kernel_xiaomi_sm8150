@@ -446,6 +446,15 @@ cmd_xzmisc = (cat $(filter-out FORCE,$^) | \
 	xz --check=crc32 --lzma2=dict=1MiB) > $@ || \
 	(rm -f $@ ; false)
 
+# be used because it would require zstd to allocate a 128 MB buffer.
+quiet_cmd_zstd = ZSTD    $@
+      cmd_zstd    = { cat $(real-prereqs) | $(ZSTD) -$(CONFIG_KERNEL_ZSTD_LEVEL); $(size_append); } > $@ || \
+      (rm -f $@; false)
+
+quiet_cmd_zstd22 = ZSTD22  $@
+      cmd_zstd22  = { cat $(real-prereqs) | $(ZSTD) -22 --ultra -T0; $(size_append); } > $@ || \
+      (rm -f $@; false)
+
 # ASM offsets
 # ---------------------------------------------------------------------------
 
