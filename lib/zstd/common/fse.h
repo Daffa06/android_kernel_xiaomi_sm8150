@@ -20,6 +20,7 @@
 /*-*****************************************
 *  Dependencies
 ******************************************/
+#include <linux/types.h>
 #include "zstd_deps.h"    /* size_t, ptrdiff_t */
 
 

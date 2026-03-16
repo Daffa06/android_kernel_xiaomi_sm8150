@@ -349,10 +349,6 @@ typedef ZSTD_DStream zstd_dstream;
  */
 size_t zstd_dstream_workspace_bound(size_t max_window_size);
 
-/**
- * struct ZSTD_DStream - the zstd streaming decompression context
- */
-typedef struct ZSTD_DStream_s ZSTD_DStream;
 /*===== ZSTD_DStream management functions =====*/
 /**
  * zstd_init_dstream() - initialize a zstd streaming decompression context
