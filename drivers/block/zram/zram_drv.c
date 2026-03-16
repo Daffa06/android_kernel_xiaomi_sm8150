@@ -31,6 +31,7 @@
 #include <linux/err.h>
 #include <linux/idr.h>
 #include <linux/sysfs.h>
+#include <linux/sysinfo.h>
 #include <linux/debugfs.h>
 #include <linux/cpuhotplug.h>
 
@@ -1827,11 +1828,23 @@ static ssize_t disksize_store(struct device *dev,
 	struct zcomp *comp;
 	struct zram *zram = dev_to_zram(dev);
 	int err;
+	struct sysinfo sys_info;
+    u64 total_ram_bytes;
+	si_meminfo(&sys_info);
+    total_ram_bytes = (u64)sys_info.totalram * sys_info.mem_unit;
 
-	disksize = memparse(buf, NULL);
-	if (!disksize)
-		return -EINVAL;
-
+#ifndef CONFIG_ZRAM_SIZE_OVERRIDE
+    if (total_ram_bytes < ((u64)7 * SZ_1G)) {
+        disksize = (u64)3 * SZ_1G;
+        pr_info("zram: Detected RAM < 7GB. Auto-setting ZRAM size to 3GB\n");
+    } else {
+        disksize = (u64)2 * SZ_1G;
+        pr_info("zram: Detected RAM >= 7GB. Auto-setting ZRAM size to 2GB\n");
+    }
+#else
+    disksize = (u64)SZ_1G * CONFIG_ZRAM_SIZE_OVERRIDE;
+    pr_info("zram: Overriding zram size to %llu bytes\n", disksize);
+#endif
 	down_write(&zram->init_lock);
 	if (init_done(zram)) {
 		pr_info("Cannot change disksize for initialized device\n");
