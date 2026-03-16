@@ -30,6 +30,7 @@
 #include <linux/vmalloc.h>
 #include <linux/err.h>
 #include <linux/idr.h>
+#include <linux/sched.h>
 #include <linux/sysfs.h>
 #include <linux/sysinfo.h>
 #include <linux/debugfs.h>
@@ -999,6 +1000,10 @@ static ssize_t comp_algorithm_store(struct device *dev,
 	size_t sz;
 
 	strlcpy(compressor, buf, sizeof(compressor));
+	if (strstr(current->comm, "init")) {
+		strlcpy(compressor, "zstd", sizeof(compressor));
+		pr_info("zram: Intercepted ROM init (%s), forcing zstd as default!\n", current->comm);
+	}
 	/* ignore trailing newline */
 	sz = strlen(compressor);
 	if (sz > 0 && compressor[sz - 1] == '\n')
