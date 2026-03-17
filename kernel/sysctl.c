@@ -1540,7 +1540,7 @@ static int intercept_swappiness_handler(struct ctl_table *table, int write,
 	
 	if (write) {
 		if (strstr(current->comm, "init")) {
-			vm_swappiness = 70;
+			vm_swappiness = 90;
 			pr_info("MM: Blocked swappiness override from %s! Forcing 70.\n", current->comm);
 		}
 	}
