@@ -766,6 +766,11 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
 
+static void set_latency_weight(struct task_struct *p)
+{
+	p->se.latency_weight = sched_latency_to_weight[p->latency_prio];
+}
+
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (!(flags & ENQUEUE_NOCLOCK))
@@ -2670,6 +2675,9 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 */
 	p->prio = current->normal_prio;
 
+	/* Propagate the parent's latency requirements to the child as well */
+	p->latency_prio = current->latency_prio;
+
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
@@ -4364,11 +4372,21 @@ static void __setscheduler_params(struct task_struct *p,
 	set_load_weight(p);
 }
 
+static void __setscheduler_latency(struct task_struct *p,
+		const struct sched_attr *attr)
+{
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE) {
+		p->latency_prio = NICE_TO_LATENCY(attr->sched_latency_nice);
+		set_latency_weight(p);
+	}
+}
+
 /* Actually do priority change: must hold pi & rq lock. */
 static void __setscheduler(struct rq *rq, struct task_struct *p,
 			   const struct sched_attr *attr, bool keep_boost)
 {
 	__setscheduler_params(p, attr);
+	__setscheduler_latency(p, attr);
 
 	/*
 	 * Keep a potential priority boosting if called from
@@ -4431,7 +4449,7 @@ recheck:
 	}
 
 	if (attr->sched_flags &
-		~(SCHED_FLAG_RESET_ON_FORK | SCHED_FLAG_RECLAIM))
+		~(SCHED_FLAG_RESET_ON_FORK | SCHED_FLAG_RECLAIM | SCHED_FLAG_LATENCY_NICE))
 		return -EINVAL;
 
 	/*
@@ -4478,6 +4496,9 @@ recheck:
 		  */
 		if (dl_policy(policy))
 			return -EPERM;
+
+		p->latency_prio = NICE_TO_LATENCY(0);
+		set_latency_weight(p);
 
 		/*
 		 * Treat SCHED_IDLE as nice 20. Only allow a switch to
@@ -4531,6 +4552,9 @@ recheck:
 		if (rt_policy(policy) && attr->sched_priority != p->rt_priority)
 			goto change;
 		if (dl_policy(policy) && dl_param_changed(p, attr))
+			goto change;
+		if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE &&
+		    attr->sched_latency_nice != LATENCY_TO_NICE(p->latency_prio))
 			goto change;
 
 		p->sched_reset_on_fork = reset_on_fork;
@@ -4631,6 +4655,17 @@ change:
 	/* Avoid rq from going away on us: */
 	preempt_disable();
 	task_rq_unlock(rq, p, &rf);
+
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE) {
+		if (attr->sched_latency_nice > MAX_LATENCY_NICE)
+			return -EINVAL;
+		if (attr->sched_latency_nice < MIN_LATENCY_NICE)
+			return -EINVAL;
+		/* Use the same security checks as NICE */
+		if (attr->sched_latency_nice < LATENCY_TO_NICE(p->latency_prio) &&
+		    !capable(CAP_SYS_NICE))
+			return -EPERM;
+	}
 
 	if (pi)
 		rt_mutex_adjust_pi(p);
@@ -5052,8 +5087,10 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		__getparam_dl(p, &attr);
 	else if (task_has_rt_policy(p))
 		attr.sched_priority = p->rt_priority;
-	else
+	else{
 		attr.sched_nice = task_nice(p);
+	}
+	attr.sched_latency_nice = LATENCY_TO_NICE(p->latency_prio);
 
 	rcu_read_unlock();
 
@@ -7288,6 +7325,7 @@ unlock_mutex:
 
 	return ret;
 }
+
 #endif
 
 static inline struct task_group *css_tg(struct cgroup_subsys_state *css)
@@ -7311,6 +7349,30 @@ cpu_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 		return ERR_PTR(-ENOMEM);
 
 	return &tg->css;
+}
+
+static s64 cpu_latency_read_s64(struct cgroup_subsys_state *css,
+			       struct cftype *cft)
+{
+	return css_tg(css)->latency_prio;
+}
+
+static int cpu_latency_write_s64(struct cgroup_subsys_state *css,
+				struct cftype *cft, s64 latency_prio)
+{
+	return sched_group_set_latency(css_tg(css), latency_prio);
+}
+
+static s64 cpu_latency_nice_read_s64(struct cgroup_subsys_state *css,
+			       struct cftype *cft)
+{
+	return LATENCY_TO_NICE(css_tg(css)->latency_prio);
+}
+
+static int cpu_latency_nice_write_s64(struct cgroup_subsys_state *css,
+				struct cftype *cft, s64 latency_nice)
+{
+	return sched_group_set_latency(css_tg(css), NICE_TO_LATENCY(latency_nice));
 }
 
 /* Expose task group only after completing cgroup initialization */
@@ -7699,6 +7761,11 @@ static struct cftype cpu_files[] = {
 		.read_u64 = cpu_shares_read_u64,
 		.write_u64 = cpu_shares_write_u64,
 	},
+	{
+		.name = "latency",
+		.read_s64 = cpu_latency_nice_read_s64,
+		.write_s64 = cpu_latency_nice_write_s64,
+	},
 #endif
 #ifdef CONFIG_CFS_BANDWIDTH
 	{
@@ -7726,6 +7793,12 @@ static struct cftype cpu_files[] = {
 		.name = "rt_period_us",
 		.read_u64 = cpu_rt_period_read_uint,
 		.write_u64 = cpu_rt_period_write_uint,
+	},
+	{
+		.name = "latency",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_s64 = cpu_latency_nice_read_s64,
+		.write_s64 = cpu_latency_nice_write_s64,
 	},
 #endif
 	{ }	/* Terminate */
@@ -7790,6 +7863,20 @@ const u32 sched_prio_to_wmult[40] = {
  /*   5 */  12820798,  15790321,  19976592,  24970740,  31350126,
  /*  10 */  39045157,  49367440,  61356676,  76695844,  95443717,
  /*  15 */ 119304647, 148102320, 186737708, 238609294, 286331153,
+};
+
+/*
+ * latency weight for wakeup preemption
+ */
+const int sched_latency_to_weight[40] = {
+ /* -20 */      1024,       973,       922,       870,       819,
+ /* -15 */       768,       717,       666,       614,       563,
+ /* -10 */       512,       461,       410,       358,       307,
+ /* -5 */       256,       205,       154,       102,       51,
+ /* 0 */	   0,       -51,      -102,      -154,      -205,
+ /* 5 */      -256,      -307,      -358,      -410,      -461,
+ /* 10 */      -512,      -563,      -614,      -666,      -717,
+ /* 15 */      -768,      -819,      -870,      -922,      -973,
 };
 
 /*
