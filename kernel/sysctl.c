@@ -1533,6 +1533,34 @@ static struct ctl_table kern_table[] = {
 	{ }
 };
 
+static int intercept_swappiness_handler(struct ctl_table *table, int write,
+                  void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	
+	if (write) {
+		if (strstr(current->comm, "init")) {
+			vm_swappiness = 70;
+			pr_info("MM: Blocked swappiness override from %s! Forcing 70.\n", current->comm);
+		}
+	}
+	return ret;
+}
+
+static int intercept_watermark_handler(struct ctl_table *table, int write,
+                  void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = watermark_scale_factor_sysctl_handler(table, write, buffer, lenp, ppos);
+	
+	if (write) {
+		if (strstr(current->comm, "init")) {
+			watermark_scale_factor = 25;
+			pr_info("MM: Blocked watermark override from %s! Forcing 25.\n", current->comm);
+		}
+	}
+	return ret;
+}
+
 static struct ctl_table vm_table[] = {
 	{
 		.procname	= "overcommit_memory",
@@ -1662,7 +1690,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &vm_swappiness,
 		.maxlen		= sizeof(vm_swappiness),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
+		.proc_handler	= intercept_swappiness_handler,
 		.extra1		= &zero,
 		.extra2		= &one_hundred,
 	},
@@ -1771,7 +1799,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &watermark_scale_factor,
 		.maxlen		= sizeof(watermark_scale_factor),
 		.mode		= 0644,
-		.proc_handler	= watermark_scale_factor_sysctl_handler,
+		.proc_handler	= intercept_watermark_handler,
 		.extra1		= &one,
 		.extra2		= &one_thousand,
 	},
