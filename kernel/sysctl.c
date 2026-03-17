@@ -49,6 +49,8 @@
 #include <linux/dcache.h>
 #include <linux/dnotify.h>
 #include <linux/syscalls.h>
+#include <linux/sysinfo.h>
+#include <linux/sizes.h>
 #include <linux/vmstat.h>
 #include <linux/nfs_fs.h>
 #include <linux/acpi.h>
@@ -1541,7 +1543,7 @@ static int intercept_swappiness_handler(struct ctl_table *table, int write,
 	if (write) {
 		if (strstr(current->comm, "init")) {
 			vm_swappiness = 90;
-			pr_info("MM: Blocked swappiness override from %s! Forcing 70.\n", current->comm);
+			pr_info("MM: Blocked swappiness override from %s! Forcing 90.\n", current->comm);
 		}
 	}
 	return ret;
@@ -1553,12 +1555,23 @@ static int intercept_watermark_handler(struct ctl_table *table, int write,
 	int ret = watermark_scale_factor_sysctl_handler(table, write, buffer, lenp, ppos);
 	
 	if (write) {
-		if (strstr(current->comm, "init")) {
-			watermark_scale_factor = 25;
-			pr_info("MM: Blocked watermark override from %s! Forcing 25.\n", current->comm);
-		}
-	}
-	return ret;
+        if (strstr(current->comm, "init")) {
+            struct sysinfo sys_info;
+            u64 total_ram_bytes;
+            
+            si_meminfo(&sys_info);
+            total_ram_bytes = (u64)sys_info.totalram * sys_info.mem_unit;
+            
+            if (total_ram_bytes < ((u64)7 * SZ_1G)) {
+                watermark_scale_factor = 3;
+                pr_info("MM: Blocked watermark override from %s! Forcing 5 for <7GB RAM.\n", current->comm);
+            } else {
+                watermark_scale_factor = 8;
+                pr_info("MM: Blocked watermark override from %s! Forcing 10 for >=7GB RAM.\n", current->comm);
+            }
+        }
+    }
+    return ret;
 }
 
 static struct ctl_table vm_table[] = {
