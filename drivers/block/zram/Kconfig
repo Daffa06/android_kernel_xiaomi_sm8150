@@ -93,9 +93,9 @@ config ZRAM_ENTROPY
 	  boost and a small loss in compression.
 
 config ZRAM_ENTROPY_THRESHOLD
-	int
+	int "ZRAM Entropy Threshold Value"
 	depends on ZRAM && ZRAM_ENTROPY
-	default 100000 if ZRAM_DEF_COMP_ZSTD
+	default 3000
 	help
 	  Pages with entropy above ZRAM_ENTROPY_THRESHOLD will be stored
 	  uncompressed. The default value was chosen as a result a lot of
