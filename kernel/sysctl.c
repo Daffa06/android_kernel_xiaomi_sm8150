@@ -1535,6 +1535,20 @@ static struct ctl_table kern_table[] = {
 	{ }
 };
 
+static int intercept_vfs_cache_handler(struct ctl_table *table, int write,
+                  void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	
+	if (write) {
+		if (strstr(current->comm, "init")) {
+			sysctl_vfs_cache_pressure = 65;
+			pr_info("MM: Blocked vfs cache override from %s! Set 65.\n", current->comm);
+		}
+	}
+	return ret;
+}
+
 static int intercept_swappiness_handler(struct ctl_table *table, int write,
                   void __user *buffer, size_t *lenp, loff_t *ppos)
 {
@@ -1563,11 +1577,11 @@ static int intercept_watermark_handler(struct ctl_table *table, int write,
             total_ram_bytes = (u64)sys_info.totalram * sys_info.mem_unit;
             
             if (total_ram_bytes < ((u64)7 * SZ_1G)) {
-                watermark_scale_factor = 3;
-                pr_info("MM: Blocked watermark override from %s! Set 3 for <7GB RAM.\n", current->comm);
+                watermark_scale_factor = 60;
+                pr_info("MM: Blocked watermark override from %s! Set 60 for <7GB RAM.\n", current->comm);
             } else {
-                watermark_scale_factor = 7;
-                pr_info("MM: Blocked watermark override from %s! Set 7 for >=7GB RAM.\n", current->comm);
+                watermark_scale_factor = 45;
+                pr_info("MM: Blocked watermark override from %s! Set 45 for >=7GB RAM.\n", current->comm);
             }
         }
     }
@@ -1871,7 +1885,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &sysctl_vfs_cache_pressure,
 		.maxlen		= sizeof(sysctl_vfs_cache_pressure),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= intercept_vfs_cache_handler,
 		.extra1		= &zero,
 	},
 #ifdef HAVE_ARCH_PICK_MMAP_LAYOUT
@@ -3668,6 +3682,28 @@ int proc_do_static_key(struct ctl_table *table, int write,
 	return ret;
 }
 #endif
+
+static int __init tea_mm_defaults(void)
+{
+    struct sysinfo sys_info;
+    u64 total_ram_bytes;
+
+    sysctl_vfs_cache_pressure = 65;
+    vm_swappiness = 85;
+    si_meminfo(&sys_info);
+    total_ram_bytes = (u64)sys_info.totalram * sys_info.mem_unit;
+    if (total_ram_bytes < ((u64)7 * SZ_1G)) {
+		watermark_scale_factor = 60;
+	} else {
+		watermark_scale_factor = 45;
+    }
+
+    pr_info("TeaKernel-MM: Boot overrides applied -> VFS: 65, Swap: 85, Watermark: %d\n", 
+            watermark_scale_factor);
+
+    return 0;
+}
+late_initcall(tea_mm_defaults);
 
 /*
  * No sense putting this after each symbol definition, twice,
