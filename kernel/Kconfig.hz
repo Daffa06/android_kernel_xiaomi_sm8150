@@ -38,6 +38,14 @@ choice
 	 while also showing good interactive responsiveness even
 	 on SMP and NUMA systems and exactly dividing by both PAL and
 	 NTSC frame rates for video and multimedia work.
+	
+	config HZ_450
+		bool "450 HZ"
+	help
+	 450 Hz is a custom balanced timer frequency.
+	 Provides a solid middle ground between 300 Hz and 600 Hz, offering 
+	 highly responsive touch and frame pacing for gaming without overly 
+	 taxing the CPU with interrupts.
 
 	config HZ_600
 		bool "600 HZ"
@@ -66,6 +74,7 @@ config HZ
 	default 100 if HZ_100
 	default 250 if HZ_250
 	default 300 if HZ_300
+	default 450 if HZ_450
 	default 600 if HZ_600
 	default 750 if HZ_750
 	default 1000 if HZ_1000
