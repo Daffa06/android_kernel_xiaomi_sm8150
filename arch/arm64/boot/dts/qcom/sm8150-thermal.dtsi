@@ -134,17 +134,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_00_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_00_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_00_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -160,7 +160,7 @@
 			};
 			map2 {
 				trip = <&cpu_00_hot>;
-				cooling-device = <&CPU0 6 6>;
+				cooling-device = <&CPU0 5 5>;
 			};
 		};
 	};
@@ -173,17 +173,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_01_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_01_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_01_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -199,7 +199,7 @@
 			};
 			map2 {
 				trip = <&cpu_01_hot>;
-				cooling-device = <&CPU1 6 6>;
+				cooling-device = <&CPU1 5 5>;
 			};
 		};
 	};
@@ -212,17 +212,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_02_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_02_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_02_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -238,7 +238,7 @@
 			};
 			map2 {
 				trip = <&cpu_02_hot>;
-				cooling-device = <&CPU2 6 6>;
+				cooling-device = <&CPU2 5 5>;
 			};
 		};
 	};
@@ -251,17 +251,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_03_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_03_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_03_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -277,7 +277,7 @@
 			};
 			map2 {
 				trip = <&cpu_03_hot>;
-				cooling-device = <&CPU3 6 6>;
+				cooling-device = <&CPU3 5 5>;
 			};
 		};
 	};
@@ -320,17 +320,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_10_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_10_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_10_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -346,7 +346,7 @@
 			};
 			map2 {
 				trip = <&cpu_10_hot>;
-				cooling-device = <&CPU4 8 8>;
+				cooling-device = <&CPU4 7 7>;
 			};
 		};
 	};
@@ -359,17 +359,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_11_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_11_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_11_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -385,7 +385,7 @@
 			};
 			map2 {
 				trip = <&cpu_11_hot>;
-				cooling-device = <&CPU5 8 8>;
+				cooling-device = <&CPU5 7 7>;
 			};
 		};
 	};
@@ -398,17 +398,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_12_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_12_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_12_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -424,7 +424,7 @@
 			};
 			map2 {
 				trip = <&cpu_12_hot>;
-				cooling-device = <&CPU6 8 8>;
+				cooling-device = <&CPU6 7 7>;
 			};
 		};
 	};
@@ -437,17 +437,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_13_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_13_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_13_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -463,7 +463,7 @@
 			};
 			map2 {
 				trip = <&cpu_13_hot>;
-				cooling-device = <&CPU7 10 10>;
+				cooling-device = <&CPU7 9 9>;
 			};
 		};
 	};
@@ -476,17 +476,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_14_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_14_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_14_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -502,7 +502,7 @@
 			};
 			map2 {
 				trip = <&cpu_14_hot>;
-				cooling-device = <&CPU4 8 8>;
+				cooling-device = <&CPU4 7 7>;
 			};
 		};
 	};
@@ -515,17 +515,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_15_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_15_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_15_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -541,7 +541,7 @@
 			};
 			map2 {
 				trip = <&cpu_15_hot>;
-				cooling-device = <&CPU5 8 8>;
+				cooling-device = <&CPU5 7 7>;
 			};
 		};
 	};
@@ -554,17 +554,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_16_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_16_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_16_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -580,7 +580,7 @@
 			};
 			map2 {
 				trip = <&cpu_16_hot>;
-				cooling-device = <&CPU6 8 8>;
+				cooling-device = <&CPU6 7 7>;
 			};
 		};
 	};
@@ -593,17 +593,17 @@
 		wake-capable-sensor;
 		trips {
 			cpu_17_soft: soft-limit {
-				temperature = <73000>;
-				hysteresis = <3000>;
+				temperature = <57000>;
+				hysteresis = <2000>;
 				type = "passive";
 			};
 			cpu_17_warm: warm-limit {
-				temperature = <82000>;
-				hysteresis = <5000>;
+				temperature = <68000>;
+				hysteresis = <3000>;
 				type = "passive";
 			};
 			cpu_17_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <77000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -619,7 +619,7 @@
 			};
 			map2 {
 				trip = <&cpu_17_hot>;
-				cooling-device = <&CPU7 10 10>;
+				cooling-device = <&CPU7 9 9>;
 			};
 		};
 	};
@@ -632,17 +632,17 @@
 		wake-capable-sensor;
 		trips {
 			gpu_0_soft: soft-limit {
-				temperature = <73000>;
+				temperature = <60000>;
 				hysteresis = <3000>;
 				type = "passive";
 			};
 			gpu_0_warm: warm-limit {
-				temperature = <82000>;
+				temperature = <75000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
 			gpu_0_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <82000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -654,11 +654,11 @@
 			};
 			map1 {
 				trip = <&gpu_0_warm>;
-				cooling-device = <&msm_gpu 3 3>; 
+				cooling-device = <&msm_gpu 2 2>; 
 			};
 			map2 {
 				trip = <&gpu_0_hot>;
-				cooling-device = <&msm_gpu 5 5>; 
+				cooling-device = <&msm_gpu 4 4>; 
 			};
 		};
 	};
@@ -846,17 +846,17 @@
 		wake-capable-sensor;
 		trips {
 			gpu_1_soft: soft-limit {
-				temperature = <73000>;
+				temperature = <60000>;
 				hysteresis = <3000>;
 				type = "passive";
 			};
 			gpu_1_warm: warm-limit {
-				temperature = <82000>;
+				temperature = <75000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
 			gpu_1_hot: hot-limit {
-				temperature = <89000>;
+				temperature = <82000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -868,11 +868,11 @@
 			};
 			map1 {
 				trip = <&gpu_1_warm>;
-				cooling-device = <&msm_gpu 3 3>; 
+				cooling-device = <&msm_gpu 2 2>; 
 			};
 			map2 {
 				trip = <&gpu_1_hot>;
-				cooling-device = <&msm_gpu 5 5>; 
+				cooling-device = <&msm_gpu 4 4>; 
 			};
 		};
 	};
