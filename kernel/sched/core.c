@@ -6217,6 +6217,10 @@ int sched_isolate_count(const cpumask_t *mask, bool include_offline)
  */
 int sched_isolate_cpu(int cpu)
 {
+	struct rq *rq = cpu_rq(cpu);
+	cpumask_t avail_cpus;
+	int ret_code = 0;
+	u64 start_time = 0;
 	unsigned long loads[3];
     unsigned long current_load;
 
@@ -6226,11 +6230,6 @@ int sched_isolate_cpu(int cpu)
     if (current_load >= 3 && cpu > 0) {
         return -EBUSY; 
     }
-
-	struct rq *rq = cpu_rq(cpu);
-	cpumask_t avail_cpus;
-	int ret_code = 0;
-	u64 start_time = 0;
 
 	if (trace_sched_isolate_enabled())
 		start_time = sched_clock();
