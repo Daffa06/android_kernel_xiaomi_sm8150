@@ -87,10 +87,10 @@ ATOMIC_NOTIFIER_HEAD(core_ctl_notifier);
 static unsigned int last_nr_big;
 
 static unsigned int get_active_cpu_count(const struct cluster_data *cluster);
-static void cpuset_next(struct cluster_data *cluster);
+//static void cpuset_next(struct cluster_data *cluster);
 
 /* ========================= sysfs interface =========================== */
-
+#if 0
 static ssize_t store_min_cpus(struct cluster_data *state,
 				const char *buf, size_t count)
 {
@@ -514,6 +514,7 @@ static struct kobj_type ktype_core_ctl = {
 	.sysfs_ops	= &sysfs_ops,
 	.default_attrs	= default_attrs,
 };
+#endif
 
 /* ==================== runqueue based core count =================== */
 
@@ -753,10 +754,12 @@ static unsigned int get_active_cpu_count(const struct cluster_data *cluster)
 				sched_isolate_count(&cluster->cpu_mask, true);
 }
 
+#if 0
 static bool is_active(const struct cpu_data *state)
 {
 	return cpu_online(state->cpu) && !cpu_isolated(state->cpu);
 }
+#endif
 
 static bool adjustment_possible(const struct cluster_data *cluster,
 							unsigned int need)
@@ -978,15 +981,19 @@ static void move_cpu_lru(struct cpu_data *cpu_data)
 	spin_unlock_irqrestore(&state_lock, flags);
 }
 
+#if 0
 static void cpuset_next(struct cluster_data *cluster) { }
 
 static bool should_we_isolate(int cpu, struct cluster_data *cluster)
 {
 	return true;
 }
+#endif
 
 static void try_to_isolate(struct cluster_data *cluster, unsigned int need)
 {
+	return;
+#if 0
 	struct cpu_data *c, *tmp;
 	unsigned long flags;
 	unsigned int num_cpus = cluster->num_cpus;
@@ -1080,6 +1087,7 @@ again:
 		first_pass = false;
 		goto again;
 	}
+#endif
 }
 
 static void __try_to_unisolate(struct cluster_data *cluster,
@@ -1319,8 +1327,12 @@ static int cluster_init(const struct cpumask *mask)
 
 	cluster->inited = true;
 
+	return 0;
+
+	/*
 	kobject_init(&cluster->kobj, &ktype_core_ctl);
 	return kobject_add(&cluster->kobj, &dev->kobj, "core_ctl");
+	*/
 }
 
 static int __init core_ctl_init(void)
