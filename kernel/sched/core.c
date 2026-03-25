@@ -7351,13 +7351,13 @@ cpu_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	return &tg->css;
 }
 
-static s64 cpu_latency_read_s64(struct cgroup_subsys_state *css,
+static __maybe_unused s64 cpu_latency_read_s64(struct cgroup_subsys_state *css,
 			       struct cftype *cft)
 {
 	return css_tg(css)->latency_prio;
 }
 
-static int cpu_latency_write_s64(struct cgroup_subsys_state *css,
+static int __maybe_unused cpu_latency_write_s64(struct cgroup_subsys_state *css,
 				struct cftype *cft, s64 latency_prio)
 {
 	return sched_group_set_latency(css_tg(css), latency_prio);
