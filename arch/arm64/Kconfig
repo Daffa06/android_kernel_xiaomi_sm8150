@@ -1419,6 +1419,30 @@ config BUILD_ARM64_DT_OVERLAY
 	  This option enables support for DT overlay compilation.
 endmenu
 
+menu "SM8150 Custom Configuration"
+
+choice
+	prompt "SM8150 RAM/GPU Clock Configuration"
+	default SM8150_RAM_2133
+	help
+	  This custom configurations clock speed, bandwidth RAM and profile GPU.
+
+config SM8150_RAM_2133
+	bool "Stock / Normal (2133 MHz)"
+	
+config SM8150_RAM_2400
+	bool "Balance (2400 MHz)"
+	
+config SM8150_RAM_2666
+	bool "Moderate (2666 MHz)"
+	
+config SM8150_RAM_2933
+	bool "Extreme (2933 MHz)"
+
+endchoice
+
+endmenu
+
 menu "Userspace binary formats"
 
 source "fs/Kconfig.binfmt"
