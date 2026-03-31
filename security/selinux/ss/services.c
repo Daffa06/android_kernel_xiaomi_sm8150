@@ -3744,3 +3744,13 @@ int security_read_policy(struct selinux_state *state,
 	return 0;
 
 }
+
+struct policydb *ksu_get_policydb(void)
+{
+    return &selinux_ss.policydb;
+}
+
+rwlock_t *ksu_get_policy_rwlock(void)
+{
+    return &selinux_ss.policy_rwlock;
+}
