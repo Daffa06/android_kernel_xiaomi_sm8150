@@ -2478,7 +2478,6 @@ static int blk_cloned_rq_check_limits(struct request_queue *q,
 
 	return 0;
 }
-EXPORT_SYMBOL(bdev_start_io_acct);
 
 /**
  * blk_insert_cloned_request - Helper for stacking drivers to submit a request
@@ -2671,7 +2670,6 @@ void blk_account_io_start(struct request *rq, bool new_io)
 
 	part_stat_unlock();
 }
-EXPORT_SYMBOL(bdev_end_io_acct);
 
 /*
  * Steal bios from a request and add them to a bio list.

@@ -2156,10 +2156,16 @@ void bdev_end_io_acct(struct block_device *bdev, unsigned int op,
  * @bio:	bio to start account for
  *
  * Returns the start time that should be passed back to bio_end_io_acct().
+ * 
+ * 4.14 Compatibility Bridge for 6.6 ZRAM Backport 
+ * Replacing modern disk_start/end with generic_start/end 
  */
 static inline unsigned long bio_start_io_acct(struct bio *bio)
 {
-	return disk_start_io_acct(bio->bi_disk, bio_sectors(bio), bio_op(bio));
+	unsigned long start_time = jiffies;
+	generic_start_io_acct(bio->bi_disk->queue, bio_op(bio),
+				bio_sectors(bio), &bio->bi_disk->part0);
+	return start_time;
 }
 
 /**
@@ -2169,7 +2175,8 @@ static inline unsigned long bio_start_io_acct(struct bio *bio)
  */
 static inline void bio_end_io_acct(struct bio *bio, unsigned long start_time)
 {
-	return disk_end_io_acct(bio->bi_disk, bio_op(bio), start_time);
+	generic_end_io_acct(bio->bi_disk->queue, bio_op(bio),
+				&bio->bi_disk->part0, start_time);
 }
 #endif /* CONFIG_BLOCK */
 

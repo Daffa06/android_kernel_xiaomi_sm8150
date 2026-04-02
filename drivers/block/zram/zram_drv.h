@@ -126,6 +126,7 @@ struct zram_hash {
 };
 
 struct zram {
+	bool use_dedup;
 	struct zram_table_entry *table;
 	struct zs_pool *mem_pool;
 	struct zcomp *comps[ZRAM_MAX_COMPS];
@@ -164,6 +165,15 @@ struct zram {
 	struct dentry *debugfs_dir;
 #endif
 };
+
+static inline bool zram_dedup_enabled(struct zram *zram)
+{
+#ifdef CONFIG_ZRAM_DEDUP
+	return zram->use_dedup;
+#else
+	return false;
+#endif
+}
 
 void zram_entry_free(struct zram *zram, struct zram_entry *entry);
 #endif

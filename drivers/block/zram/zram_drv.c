@@ -195,16 +195,25 @@ static void zram_accessed(struct zram *zram, u32 index)
 #endif
 }
 
-static inline void update_used_max(struct zram *zram,
-					const unsigned long pages)
+static inline void update_used_max(struct zram *zram, 
+						const unsigned long pages)
 {
-	unsigned long cur_max = atomic_long_read(&zram->stats.max_used_pages);
+	/* Read the current max value first */
+	unsigned long old_max = atomic_long_read(&zram->stats.max_used_pages);
 
 	do {
-		if (cur_max >= pages)
+		/* If current recorded max is already higher or equal, no need to update */
+		if (old_max >= pages)
 			return;
-	} while (!atomic_long_try_cmpxchg(&zram->stats.max_used_pages,
-					  &cur_max, pages));
+
+		/* 
+		 * atomic_long_cmpxchg(target, old, new)
+		 * It tries to swap 'old_max' with 'pages'.
+		 * It returns the ACTUAL value currently in memory.
+		 * If it returns same as 'old_max', the swap was successful!
+		 */
+	} while ((old_max = atomic_long_cmpxchg(&zram->stats.max_used_pages,
+						old_max, pages)) != old_max);
 }
 
 static inline void zram_fill_page(void *ptr, unsigned long len,
@@ -844,7 +853,9 @@ static void zram_sync_read(struct work_struct *work)
 	struct bio_vec bv;
 	struct bio bio;
 
-	bio_init(&bio, zw->zram->bdev, &bv, 1, REQ_OP_READ);
+	bio_init(&bio, &bv, 1);
+	bio_set_dev(&bio, zw->zram->bdev);
+	bio.bi_opf = REQ_OP_READ;
 	bio.bi_iter.bi_sector = zw->entry * (PAGE_SIZE >> 9);
 	__bio_add_page(&bio, zw->page, PAGE_SIZE, 0);
 	zw->error = submit_bio_wait(&bio);
@@ -1081,16 +1092,6 @@ static ssize_t comp_algorithm_store(struct device *dev,
     return ret ? ret : len;
 }
 
-#ifdef CONFIG_ZRAM_MULTI_COMP
-static ssize_t recomp_algorithm_store(struct device *dev,
-        struct device_attribute *attr, const char *buf, size_t len)
-{
-    struct zram *zram = dev_to_zram(dev);
-    int ret = __comp_algorithm_store(zram, ZRAM_SECONDARY_COMP, buf);
-    return ret ? ret : len;
-}
-#endif
-
 static ssize_t use_dedup_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
@@ -1127,18 +1128,6 @@ static ssize_t comp_algorithm_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	return __comp_algorithm_show(zram, ZRAM_PRIMARY_COMP, buf);
-}
-
-static ssize_t comp_algorithm_store(struct device *dev,
-				    struct device_attribute *attr,
-				    const char *buf,
-				    size_t len)
-{
-	struct zram *zram = dev_to_zram(dev);
-	int ret;
-
-	ret = __comp_algorithm_store(zram, ZRAM_PRIMARY_COMP, buf);
-	return ret ? ret : len;
 }
 
 #ifdef CONFIG_ZRAM_MULTI_COMP
@@ -1374,7 +1363,7 @@ static void zram_meta_free(struct zram *zram, u64 disksize)
 	size_t index;
 
 	if (!zram->table)
-+		return;
+		return;
 	/* Free all pages that are still in this zram device */
 	for (index = 0; index < num_pages; index++)
 		zram_free_page(zram, index);
@@ -1554,16 +1543,25 @@ static int zram_read_page(struct zram *zram, struct page *page, u32 index,
  * always expects a full page for the output.
  */
 static int zram_bvec_read_partial(struct zram *zram, struct bio_vec *bvec,
-				  u32 index, int offset)
+				  u32 index, int offset, struct bio *bio)
 {
 	struct page *page = alloc_page(GFP_NOIO);
 	int ret;
 
 	if (!page)
 		return -ENOMEM;
-	ret = zram_read_page(zram, page, index, NULL);
-	if (likely(!ret))
-		memcpy_to_bvec(bvec, page_address(page) + offset);
+
+	/* 
+	 * Use 'false' for partial_io parameter to avoid infinite recursion 
+	 * and NULL for bio if not needed.
+	 */
+	ret = zram_read_page(zram, page, index, bio);
+	if (likely(!ret)) {
+		void *dst = kmap_atomic(bvec->bv_page);
+		memcpy(dst + bvec->bv_offset, page_address(page) + offset, bvec->bv_len);
+		kunmap_atomic(dst);
+	}
+
 	__free_page(page);
 	return ret;
 }
@@ -1572,7 +1570,7 @@ static int zram_bvec_read(struct zram *zram, struct bio_vec *bvec,
               u32 index, int offset, struct bio *bio)
 {
 	if (is_partial_io(bvec))
-		return zram_bvec_read_partial(zram, bvec, index, offset);
+		return zram_bvec_read_partial(zram, bvec, index, offset, bio);
 	return zram_read_page(zram, bvec->bv_page, index, bio);
 }
 
@@ -1696,11 +1694,17 @@ static int zram_bvec_write_partial(struct zram *zram, struct bio_vec *bvec,
 	if (!page)
 		return -ENOMEM;
 
+	/* Read the existing full page first before modifying it */
 	ret = zram_read_page(zram, page, index, bio);
 	if (!ret) {
-		memcpy_from_bvec(page_address(page) + offset, bvec);
+		void *src = kmap_atomic(bvec->bv_page);
+		memcpy(page_address(page) + offset, src + bvec->bv_offset, bvec->bv_len);
+		kunmap_atomic(src);
+
+		/* Write back the modified full page */
 		ret = zram_write_page(zram, page, index);
 	}
+
 	__free_page(page);
 	return ret;
 }
@@ -1725,6 +1729,7 @@ static int zram_recompress(struct zram *zram, u32 index, struct page *page,
 			   u32 threshold, u32 prio, u32 prio_max)
 {
 	struct zcomp_strm *zstrm = NULL;
+	struct zram_entry *entry = zram_get_entry(zram, index);
 	unsigned long handle_old;
 	unsigned long handle_new;
 	unsigned int comp_len_old;
@@ -1735,7 +1740,7 @@ static int zram_recompress(struct zram *zram, u32 index, struct page *page,
 	void *src, *dst;
 	int ret;
 
-	handle_old = zram_get_handle(zram, index);
+	handle_old = zram_entry_handle(zram, entry);
 	if (!handle_old)
 		return -EINVAL;
 
@@ -1848,14 +1853,18 @@ static int zram_recompress(struct zram *zram, u32 index, struct page *page,
 	zcomp_stream_put(zram->comps[prio]);
 
 	zs_unmap_object(zram->mem_pool, handle_new);
-
-	zram_free_page(zram, index);
-	zram_set_handle(zram, index, handle_new);
+	/* 
+	 * Because the Dedup patch permanently modifies the table, 
+	 * the handle is ALWAYS present in the entry 
+	 */
+    entry->handle = handle_new;
+	
 	zram_set_obj_size(zram, index, comp_len_new);
 	zram_set_priority(zram, index, prio);
 
-	atomic64_add(comp_len_new, &zram->stats.compr_data_size);
-	atomic64_inc(&zram->stats.pages_stored);
+	/* Update Statistics: Remove old compression sizes, add new ones */
+	atomic64_sub(comp_len_old, &zram->stats.compr_data_size);
+    atomic64_add(comp_len_new, &zram->stats.compr_data_size);
 
 	return 0;
 }
@@ -2049,7 +2058,7 @@ static void zram_bio_read(struct zram *zram, struct bio *bio)
 		zram_accessed(zram, index);
 		zram_slot_unlock(zram, index);
 
-		bio_advance_iter_single(bio, &iter, bv.bv_len);
+		bio_advance_iter(bio, &iter, bv.bv_len);
 	} while (iter.bi_size);
 
 	bio_end_io_acct(bio, start_time);
@@ -2079,7 +2088,7 @@ static void zram_bio_write(struct zram *zram, struct bio *bio)
 		zram_accessed(zram, index);
 		zram_slot_unlock(zram, index);
 
-		bio_advance_iter_single(bio, &iter, bv.bv_len);
+		bio_advance_iter(bio, &iter, bv.bv_len);
 	} while (iter.bi_size);
 
 	bio_end_io_acct(bio, start_time);
@@ -2147,12 +2156,6 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 		return -ENOTSUPP;
 	zram = bdev->bd_disk->private_data;
 
-	if (!valid_io_request(zram, sector, PAGE_SIZE)) {
-		atomic64_inc(&zram->stats.invalid_io);
-		ret = -EINVAL;
-		goto out;
-	}
-
 	index = sector >> SECTORS_PER_PAGE_SHIFT;
 	offset = (sector & (SECTORS_PER_PAGE - 1)) << SECTOR_SHIFT;
 
@@ -2163,11 +2166,17 @@ static int zram_rw_page(struct block_device *bdev, sector_t sector,
 	{
         unsigned int req_op = is_write ? REQ_OP_WRITE : REQ_OP_READ;
         
-        start_time = disk_start_io_acct(bdev->bd_disk, SECTORS_PER_PAGE, req_op);
-        ret = zram_bvec_rw(zram, &bv, index, offset, is_write, NULL);
-        disk_end_io_acct(bdev->bd_disk, req_op, start_time);
+		start_time = jiffies;
+        generic_start_io_acct(bdev->bd_disk->queue, req_op, 
+			SECTORS_PER_PAGE, &bdev->bd_disk->part0);
+        if (is_write)
+			ret = zram_write_page(zram, bv.bv_page, index);
+		else
+			ret = zram_bvec_read(zram, &bv, index, offset, NULL);
+        generic_end_io_acct(bdev->bd_disk->queue, req_op, &bdev->bd_disk->part0, 
+			start_time);
     }
-out:
+
 	/*
 	 * If I/O fails, just return error(ie, non-zero) without
 	 * calling page_endio.
@@ -2373,7 +2382,6 @@ static DEVICE_ATTR_RW(writeback_limit);
 static DEVICE_ATTR_RW(writeback_limit_enable);
 #endif
 
-static DEVICE_ATTR_RW(comp_algorithm);
 /* 6.6 Multi-Compression & Recompression Attributes */
 #ifdef CONFIG_ZRAM_MULTI_COMP
 static DEVICE_ATTR_RW(recomp_algorithm);
