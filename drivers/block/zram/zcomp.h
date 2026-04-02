@@ -9,7 +9,22 @@
 
 #ifndef _ZCOMP_H_
 #define _ZCOMP_H_
-#include <linux/local_lock.h>
+/*
+ * BACKPORT HYBRID: local_lock wrapper for Kernel 4.14 
+ * Helper local_lock 5.8+ to preempt 4.14
+ */
+#include <linux/preempt.h>
+
+typedef struct { } local_lock_t;
+
+#define local_lock_init(lock)           do { } while (0)
+#define INIT_LOCAL_LOCK(lock)           do { } while (0)
+
+#define local_lock(l)			preempt_disable()
+#define local_unlock(l)			preempt_enable()
+
+#define local_lock_irqsave(l, flags)	local_irq_save(flags)
+#define local_unlock_irqrestore(l, flags) local_irq_restore(flags)
 
 struct zcomp_strm {
 	/* The members ->buffer and ->tfm are protected by ->lock. */

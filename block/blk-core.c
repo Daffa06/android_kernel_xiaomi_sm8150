@@ -2671,40 +2671,6 @@ void blk_account_io_start(struct request *rq, bool new_io)
 	part_stat_unlock();
 }
 
-unsigned long disk_start_io_acct(struct gendisk *disk, unsigned int sectors,
-		unsigned int op)
-{
-	struct hd_struct *part = &disk->part0;
-	const int sgrp = op_stat_group(op);
-	unsigned long now = READ_ONCE(jiffies);
-
-	part_stat_lock();
-	update_io_ticks(part, now, false);
-	part_stat_inc(part, ios[sgrp]);
-	part_stat_add(part, sectors[sgrp], sectors);
-	part_stat_local_inc(part, in_flight[op_is_write(op)]);
-	part_stat_unlock();
-
-	return now;
-}
-EXPORT_SYMBOL(disk_start_io_acct);
-
-void disk_end_io_acct(struct gendisk *disk, unsigned int op,
-		unsigned long start_time)
-{
-	struct hd_struct *part = &disk->part0;
-	const int sgrp = op_stat_group(op);
-	unsigned long now = READ_ONCE(jiffies);
-	unsigned long duration = now - start_time;
-
-	part_stat_lock();
-	update_io_ticks(part, now, true);
-	part_stat_add(part, nsecs[sgrp], jiffies_to_nsecs(duration));
-	part_stat_local_dec(part, in_flight[op_is_write(op)]);
-	part_stat_unlock();
-}
-EXPORT_SYMBOL(disk_end_io_acct);
-
 /*
  * Steal bios from a request and add them to a bio list.
  * The request must not have been partially completed before.
@@ -3899,3 +3865,32 @@ blk_latency_hist_show(struct io_latency_state *s, char *buf)
 	return bytes_written;
 }
 EXPORT_SYMBOL(blk_latency_hist_show);
+
+/*
+ * BACKPORT HYBRID: disk/bio-based accounting helpers
+ */
+
+unsigned long disk_start_io_acct(struct gendisk *disk, unsigned int sectors,
+                                 unsigned int op)
+{
+        struct request_queue *q = disk->queue;
+        struct hd_struct *part = &disk->part0;
+        int rw = op_is_write(op) ? WRITE : READ;
+        unsigned long start_time = jiffies;
+
+        generic_start_io_acct(q, rw, sectors, part);
+
+        return start_time;
+}
+EXPORT_SYMBOL(disk_start_io_acct);
+
+void disk_end_io_acct(struct gendisk *disk, unsigned int op,
+                      unsigned long start_time)
+{
+        struct request_queue *q = disk->queue;
+        struct hd_struct *part = &disk->part0;
+        int rw = op_is_write(op) ? WRITE : READ;
+
+        generic_end_io_acct(q, rw, part, start_time);
+}
+EXPORT_SYMBOL(disk_end_io_acct);

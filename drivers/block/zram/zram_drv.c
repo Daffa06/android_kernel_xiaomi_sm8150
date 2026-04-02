@@ -39,6 +39,8 @@
 static DEFINE_IDR(zram_index_idr);
 /* idr index must be protected */
 static DEFINE_MUTEX(zram_index_mutex);
+/* BACKPORT HYBRID: silent legacy dedup feature*/
+#define zram_dedup_enabled(zram) (false)
 
 static int zram_major;
 static const char *default_compressor = CONFIG_ZRAM_DEF_COMP;
@@ -140,6 +142,16 @@ static inline bool zram_allocated(struct zram *zram, u32 index)
 	return zram_get_obj_size(zram, index) ||
 			zram_test_flag(zram, index, ZRAM_SAME) ||
 			zram_test_flag(zram, index, ZRAM_WB);
+}
+
+/*
+ * BACKPORT HYBRID: blk_cleanup_disk 6.x -> 4.14               
+ */
+static inline void blk_cleanup_disk(struct gendisk *disk)
+{
+        if (disk->queue)
+                blk_cleanup_queue(disk->queue);
+        put_disk(disk);
 }
 
 #if PAGE_SIZE != 4096
@@ -1016,7 +1028,7 @@ static ssize_t use_dedup_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	down_read(&zram->init_lock);
-	val = zram->use_dedup;
+	val = 0;
 	up_read(&zram->init_lock);
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", (int)val);
@@ -1987,6 +1999,7 @@ static int zram_add(void)
 {
 	struct zram *zram;
 	int ret, device_id;
+	struct request_queue *queue;
 
 	zram = kzalloc(sizeof(struct zram), GFP_KERNEL);
 	if (!zram)
